@@ -1,0 +1,52 @@
+{
+    "name": "vendor/discoverysuite",
+    "description": "AI-Powered Product Discovery Suite for Magento 2 - Advanced Search, Recommendations, Smart Listings, Shopping Assistant, and Analytics",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "AI Product Discovery Team",
+            "email": "support@discoverysuite.ai"
+        }
+    ],
+    "keywords": [
+        "magento2",
+        "ai",
+        "search",
+        "recommendations",
+        "product discovery",
+        "machine learning",
+        "analytics",
+        "ecommerce"
+    ],
+    "require": {
+        "php": "^7.4|^8.0|^8.1|^8.2",
+        "magento/framework": "^103.0",
+        "magento/module-catalog": "^104.0",
+        "magento/module-customer": "^103.0",
+        "magento/module-sales": "^103.0",
+        "magento/module-checkout": "^100.4",
+        "magento/module-config": "^101.2",
+        "magento/module-store": "^101.1",
+        "magento/module-backend": "^102.0",
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.0",
+        "magento/magento-coding-standard": "^32"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Vendor\\DiscoverySuite\\": ""
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Vendor\\DiscoverySuite\\Test\\": "Test/"
+        }
+    }
+}

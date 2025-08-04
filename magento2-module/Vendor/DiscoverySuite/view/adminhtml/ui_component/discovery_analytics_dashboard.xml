@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+/**
+ * DiscoverySuite Analytics Dashboard UI Component
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+            <item name="deps" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+        </item>
+        <item name="spinner" xsi:type="string">discovery_analytics_columns</item>
+        <item name="buttons" xsi:type="array">
+            <item name="refresh" xsi:type="array">
+                <item name="name" xsi:type="string">refresh</item>
+                <item name="label" xsi:type="string" translate="true">Refresh Data</item>
+                <item name="class" xsi:type="string">primary</item>
+                <item name="url" xsi:type="string">*/*/refresh</item>
+            </item>
+            <item name="export" xsi:type="array">
+                <item name="name" xsi:type="string">export</item>
+                <item name="label" xsi:type="string" translate="true">Export Report</item>
+                <item name="class" xsi:type="string">secondary</item>
+                <item name="url" xsi:type="string">*/*/export</item>
+            </item>
+        </item>
+    </argument>
+    
+    <dataSource name="discovery_analytics_dashboard_data_source">
+        <argument name="dataProvider" xsi:type="configurableObject">
+            <argument name="class" xsi:type="string">Vendor\DiscoverySuite\Ui\Component\DataProvider\AnalyticsDataProvider</argument>
+            <argument name="name" xsi:type="string">discovery_analytics_dashboard_data_source</argument>
+            <argument name="primaryFieldName" xsi:type="string">id</argument>
+            <argument name="requestFieldName" xsi:type="string">id</argument>
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/provider</item>
+                    <item name="update_url" xsi:type="url" path="mui/index/render"/>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="indexField" xsi:type="string">id</item>
+                    </item>
+                </item>
+            </argument>
+        </argument>
+    </dataSource>
+    
+    <listingToolbar name="listing_top">
+        <argument name="data" xsi:type="array">
+            <item name="config" xsi:type="array">
+                <item name="sticky" xsi:type="boolean">true</item>
+            </item>
+        </argument>
+        
+        <bookmark name="bookmarks"/>
+        <columnsControls name="columns_controls"/>
+        
+        <filterSearch name="fulltext">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="provider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                    <item name="chipsProvider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="provider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                        <item name="namespace" xsi:type="string">current.search</item>
+                    </item>
+                </item>
+            </argument>
+        </filterSearch>
+        
+        <filters name="listing_filters">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="columnsProvider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                    <item name="storageConfig" xsi:type="array">
+                        <item name="provider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                        <item name="namespace" xsi:type="string">current.filters</item>
+                    </item>
+                    <item name="childDefaults" xsi:type="array">
+                        <item name="provider" xsi:type="string">discovery_analytics_dashboard.discovery_analytics_dashboard_data_source</item>
+                        <item name="imports" xsi:type="array">
+                            <item name="visible" xsi:type="string">componentType = column, index = ${ $.index }:visible</item>
+                        </item>
+                    </item>
+                </item>
+            </argument>
+            
+            <filterRange name="created_at">
+                <argument name="data" xsi:type="array">
+                    <item name="config" xsi:type="array">
+                        <item name="dataType" xsi:type="string">date</item>
+                        <item name="label" xsi:type="string" translate="true">Date Range</item>
+                        <item name="dateFormat" xsi:type="string">MMM d, y</item>
+                    </item>
+                </argument>
+            </filterRange>
+            
+            <filterSelect name="store_id">
+                <argument name="optionsProvider" xsi:type="configurableObject">
+                    <argument name="class" xsi:type="string">Magento\Store\Ui\Component\Listing\Column\Store\Options</argument>
+                </argument>
+                <argument name="data" xsi:type="array">
+                    <item name="config" xsi:type="array">
+                        <item name="dataType" xsi:type="string">select</item>
+                        <item name="label" xsi:type="string" translate="true">Store View</item>
+                        <item name="captionValue" xsi:type="string">0</item>
+                        <item name="caption" xsi:type="string" translate="true">All Store Views</item>
+                    </item>
+                </argument>
+            </filterSelect>
+        </filters>
+        
+        <paging name="listing_paging"/>
+    </listingToolbar>
+    
+    <columns name="discovery_analytics_columns">
+        <selectionsColumn name="ids">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="resizeEnabled" xsi:type="boolean">false</item>
+                    <item name="resizeDefaultWidth" xsi:type="string">55</item>
+                    <item name="indexField" xsi:type="string">id</item>
+                </item>
+            </argument>
+        </selectionsColumn>
+        
+        <column name="id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">textRange</item>
+                    <item name="sorting" xsi:type="string">asc</item>
+                    <item name="label" xsi:type="string" translate="true">ID</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="event_type">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Event Type</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="user_id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">textRange</item>
+                    <item name="label" xsi:type="string" translate="true">Customer ID</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="session_id">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Session ID</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="store_id" class="Magento\Store\Ui\Component\Listing\Column\Store">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">store</item>
+                    <item name="label" xsi:type="string" translate="true">Store View</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="page_url">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">text</item>
+                    <item name="label" xsi:type="string" translate="true">Page URL</item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="device_type">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">select</item>
+                    <item name="label" xsi:type="string" translate="true">Device Type</item>
+                    <item name="options" xsi:type="array">
+                        <item name="desktop" xsi:type="array">
+                            <item name="value" xsi:type="string">desktop</item>
+                            <item name="label" xsi:type="string" translate="true">Desktop</item>
+                        </item>
+                        <item name="mobile" xsi:type="array">
+                            <item name="value" xsi:type="string">mobile</item>
+                            <item name="label" xsi:type="string" translate="true">Mobile</item>
+                        </item>
+                        <item name="tablet" xsi:type="array">
+                            <item name="value" xsi:type="string">tablet</item>
+                            <item name="label" xsi:type="string" translate="true">Tablet</item>
+                        </item>
+                    </item>
+                </item>
+            </argument>
+        </column>
+        
+        <column name="created_at" class="Magento\Ui\Component\Listing\Columns\Date">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="filter" xsi:type="string">dateRange</item>
+                    <item name="component" xsi:type="string">Magento_Ui/js/grid/columns/date</item>
+                    <item name="dataType" xsi:type="string">date</item>
+                    <item name="label" xsi:type="string" translate="true">Created At</item>
+                    <item name="dateFormat" xsi:type="string">MMM d, y, h:mm:ss A</item>
+                </item>
+            </argument>
+        </column>
+        
+        <actionsColumn name="actions" class="Vendor\DiscoverySuite\Ui\Component\Listing\Column\AnalyticsActions">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="resizeEnabled" xsi:type="boolean">false</item>
+                    <item name="resizeDefaultWidth" xsi:type="string">107</item>
+                    <item name="indexField" xsi:type="string">id</item>
+                </item>
+            </argument>
+        </actionsColumn>
+    </columns>
+</listing>

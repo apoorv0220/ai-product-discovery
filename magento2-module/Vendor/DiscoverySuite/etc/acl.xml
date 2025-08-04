@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite ACL Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Acl/etc/acl.xsd">
+    <acl>
+        <resources>
+            <resource id="Magento_Backend::admin">
+                <resource id="Magento_Backend::stores">
+                    <resource id="Magento_Backend::stores_settings">
+                        <resource id="Magento_Config::config">
+                            <resource id="Vendor_DiscoverySuite::config" title="DiscoverySuite Configuration"/>
+                        </resource>
+                    </resource>
+                </resource>
+                <resource id="Vendor_DiscoverySuite::discovery_suite" title="AI Discovery Suite">
+                    <resource id="Vendor_DiscoverySuite::dashboard" title="Dashboard"/>
+                    <resource id="Vendor_DiscoverySuite::search" title="Search Management">
+                        <resource id="Vendor_DiscoverySuite::search_synonyms" title="Synonyms"/>
+                        <resource id="Vendor_DiscoverySuite::search_analytics" title="Search Analytics"/>
+                        <resource id="Vendor_DiscoverySuite::search_indexing" title="Search Indexing"/>
+                    </resource>
+                    <resource id="Vendor_DiscoverySuite::recommendations" title="Recommendations">
+                        <resource id="Vendor_DiscoverySuite::recommendation_rules" title="Recommendation Rules"/>
+                        <resource id="Vendor_DiscoverySuite::recommendation_analytics" title="Recommendation Analytics"/>
+                    </resource>
+                    <resource id="Vendor_DiscoverySuite::merchandising" title="Merchandising">
+                        <resource id="Vendor_DiscoverySuite::merchandising_rules" title="Merchandising Rules"/>
+                        <resource id="Vendor_DiscoverySuite::product_boosting" title="Product Boosting"/>
+                        <resource id="Vendor_DiscoverySuite::category_management" title="Category Management"/>
+                    </resource>
+                    <resource id="Vendor_DiscoverySuite::shopping_assistant" title="Shopping Assistant">
+                        <resource id="Vendor_DiscoverySuite::assistant_flows" title="Guided Flows"/>
+                        <resource id="Vendor_DiscoverySuite::assistant_analytics" title="Assistant Analytics"/>
+                    </resource>
+                    <resource id="Vendor_DiscoverySuite::analytics" title="Analytics & Reports">
+                        <resource id="Vendor_DiscoverySuite::analytics_dashboard" title="Analytics Dashboard"/>
+                        <resource id="Vendor_DiscoverySuite::ab_testing" title="A/B Testing"/>
+                        <resource id="Vendor_DiscoverySuite::performance_reports" title="Performance Reports"/>
+                    </resource>
+                    <resource id="Vendor_DiscoverySuite::system" title="System">
+                        <resource id="Vendor_DiscoverySuite::api_management" title="API Management"/>
+                        <resource id="Vendor_DiscoverySuite::sync_tools" title="Sync Tools"/>
+                        <resource id="Vendor_DiscoverySuite::maintenance" title="Maintenance"/>
+                    </resource>
+                </resource>
+            </resource>
+        </resources>
+    </acl>
+</config>

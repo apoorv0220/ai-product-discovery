@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Default Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <discovery_suite>
+            <general>
+                <enabled>1</enabled>
+                <api_base_url>http://localhost</api_base_url>
+                <api_key></api_key>
+                <timeout>30</timeout>
+                <debug_mode>0</debug_mode>
+            </general>
+            <search>
+                <enabled>1</enabled>
+                <autocomplete_enabled>1</enabled>
+                <autocomplete_min_chars>2</autocomplete_min_chars>
+                <autocomplete_max_results>10</autocomplete_max_results>
+                <typo_tolerance>1</typo_tolerance>
+                <synonyms_enabled>1</synonyms_enabled>
+                <fallback_to_magento>1</fallback_to_magento>
+            </search>
+            <recommendations>
+                <enabled>1</enabled>
+                <homepage_enabled>1</homepage_enabled>
+                <product_page_enabled>1</product_page_enabled>
+                <cart_page_enabled>1</cart_page_enabled>
+                <category_page_enabled>1</category_page_enabled>
+                <max_recommendations>12</max_recommendations>
+                <recommendation_types>cross_sell,up_sell,similar,trending</recommendation_types>
+            </recommendations>
+            <smart_listings>
+                <enabled>1</enabled>
+                <auto_sort_enabled>1</auto_sort_enabled>
+                <dynamic_filters_enabled>1</dynamic_filters_enabled>
+                <merchandising_enabled>1</merchandising_enabled>
+                <boost_popular_products>1</boost_popular_products>
+                <boost_high_margin>0</boost_high_margin>
+            </smart_listings>
+            <shopping_assistant>
+                <enabled>1</enabled>
+                <widget_position>bottom_right</widget_position>
+                <chat_enabled>1</chat_enabled>
+                <guided_flow_enabled>1</guided_flow_enabled>
+                <auto_trigger_delay>30</auto_trigger_delay>
+            </shopping_assistant>
+            <analytics>
+                <enabled>1</enabled>
+                <track_searches>1</track_searches>
+                <track_clicks>1</track_clicks>
+                <track_purchases>1</track_purchases>
+                <track_page_views>1</track_page_views>
+                <ab_testing_enabled>1</ab_testing_enabled>
+                <data_retention_days>365</data_retention_days>
+            </analytics>
+        </discovery_suite>
+    </default>
+</config>

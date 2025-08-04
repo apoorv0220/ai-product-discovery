@@ -1,0 +1,351 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Admin System Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="discovery_suite" translate="label" sortOrder="500">
+            <label>AI Discovery Suite</label>
+        </tab>
+        
+        <section id="discovery_suite" translate="label" type="text" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+            <label>AI Product Discovery</label>
+            <tab>discovery_suite</tab>
+            <resource>Vendor_DiscoverySuite::config</resource>
+            
+            <!-- General Settings -->
+            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>General Settings</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable DiscoverySuite</label>
+                    <comment>Enable or disable the entire AI Discovery Suite</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="api_base_url" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>API Base URL</label>
+                    <comment>Base URL for AI microservices (e.g., http://localhost or https://api.discoverysuite.ai)</comment>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="api_key" translate="label comment" type="password" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>API Key</label>
+                    <comment>Authentication key for AI microservices</comment>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="timeout" translate="label comment" type="text" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>API Timeout (seconds)</label>
+                    <comment>Timeout for API requests to microservices</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-300</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="debug_mode" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Debug Mode</label>
+                    <comment>Enable debug logging for development</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+            
+            <!-- Search Settings -->
+            <group id="search" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>AI Search & Autocomplete</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable AI Search</label>
+                    <comment>Enable AI-powered search functionality</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="autocomplete_enabled" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Autocomplete</label>
+                    <comment>Enable intelligent autocomplete suggestions</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="autocomplete_min_chars" translate="label comment" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Autocomplete Min Characters</label>
+                    <comment>Minimum characters before showing autocomplete suggestions</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-10</validate>
+                    <depends>
+                        <field id="autocomplete_enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="autocomplete_max_results" translate="label comment" type="text" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Max Autocomplete Results</label>
+                    <comment>Maximum number of autocomplete suggestions to show</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-50</validate>
+                    <depends>
+                        <field id="autocomplete_enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="typo_tolerance" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Typo Tolerance</label>
+                    <comment>Enable automatic typo correction in search</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="synonyms_enabled" translate="label comment" type="select" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Synonyms</label>
+                    <comment>Use synonym matching for better search results</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="fallback_to_magento" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Fallback to Magento Search</label>
+                    <comment>Use Magento's default search when AI service is unavailable</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+            
+            <!-- Recommendations Settings -->
+            <group id="recommendations" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Product Recommendations</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Recommendations</label>
+                    <comment>Enable AI-powered product recommendations</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="homepage_enabled" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Homepage Recommendations</label>
+                    <comment>Show recommendations on homepage</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="product_page_enabled" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Product Page Recommendations</label>
+                    <comment>Show recommendations on product pages</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="cart_page_enabled" translate="label comment" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Cart Page Recommendations</label>
+                    <comment>Show recommendations on cart page</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="category_page_enabled" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Category Page Recommendations</label>
+                    <comment>Show recommendations on category pages</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="max_recommendations" translate="label comment" type="text" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Max Recommendations</label>
+                    <comment>Maximum number of recommendations to display</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-50</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+            
+            <!-- Smart Listings Settings -->
+            <group id="smart_listings" translate="label" type="text" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Smart Product Listings</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Smart Listings</label>
+                    <comment>Enable AI-optimized product listings</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="auto_sort_enabled" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Auto Sort Products</label>
+                    <comment>Automatically sort products using AI ranking</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="dynamic_filters_enabled" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Dynamic Filters</label>
+                    <comment>Generate smart filters based on product attributes</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="merchandising_enabled" translate="label comment" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Merchandising Tools</label>
+                    <comment>Enable product boosting, pinning, and merchandising</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="boost_popular_products" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Boost Popular Products</label>
+                    <comment>Automatically boost popular/trending products</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="boost_high_margin" translate="label comment" type="select" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Boost High Margin Products</label>
+                    <comment>Boost products with higher profit margins</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+            
+            <!-- Shopping Assistant Settings -->
+            <group id="shopping_assistant" translate="label" type="text" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>AI Shopping Assistant</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Shopping Assistant</label>
+                    <comment>Enable AI-powered shopping assistant</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="widget_position" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Widget Position</label>
+                    <comment>Position of the shopping assistant widget</comment>
+                    <source_model>Vendor\DiscoverySuite\Model\Config\Source\WidgetPosition</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="chat_enabled" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Chat Interface</label>
+                    <comment>Enable chat-based shopping assistance</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="guided_flow_enabled" translate="label comment" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Guided Flow</label>
+                    <comment>Enable step-by-step guided shopping flows</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="auto_trigger_delay" translate="label comment" type="text" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Auto Trigger Delay (seconds)</label>
+                    <comment>Delay before auto-triggering the assistant</comment>
+                    <validate>validate-digits validate-digits-range digits-range-0-300</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+            
+            <!-- Analytics Settings -->
+            <group id="analytics" translate="label" type="text" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Analytics & A/B Testing</label>
+                
+                <field id="enabled" translate="label comment" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Analytics</label>
+                    <comment>Enable analytics and event tracking</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                
+                <field id="track_searches" translate="label comment" type="select" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Track Search Events</label>
+                    <comment>Track search queries and results</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="track_clicks" translate="label comment" type="select" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Track Click Events</label>
+                    <comment>Track product clicks and interactions</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="track_purchases" translate="label comment" type="select" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Track Purchase Events</label>
+                    <comment>Track conversions and purchase events</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="ab_testing_enabled" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable A/B Testing</label>
+                    <comment>Enable A/B testing for optimization</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="data_retention_days" translate="label comment" type="text" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Data Retention (days)</label>
+                    <comment>How long to retain analytics data</comment>
+                    <validate>validate-digits validate-digits-range digits-range-1-3650</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

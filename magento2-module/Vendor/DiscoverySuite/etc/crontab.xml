@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Cron Jobs Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="discovery_suite">
+        
+        <!-- Sync product performance data every hour -->
+        <job name="discovery_suite_sync_product_performance" instance="Vendor\DiscoverySuite\Cron\SyncProductPerformance" method="execute">
+            <schedule>0 * * * *</schedule>
+        </job>
+        
+        <!-- Sync trending products every 6 hours -->
+        <job name="discovery_suite_sync_trending_products" instance="Vendor\DiscoverySuite\Cron\SyncProductPerformance" method="syncTrendingProducts">
+            <schedule>0 */6 * * *</schedule>
+        </job>
+        
+        <!-- Sync search analytics daily at 2 AM -->
+        <job name="discovery_suite_sync_search_analytics" instance="Vendor\DiscoverySuite\Cron\SyncAnalytics" method="syncSearchAnalytics">
+            <schedule>0 2 * * *</schedule>
+        </job>
+        
+        <!-- Clean old analytics data weekly -->
+        <job name="discovery_suite_clean_analytics_data" instance="Vendor\DiscoverySuite\Cron\CleanAnalyticsData" method="execute">
+            <schedule>0 3 * * 0</schedule>
+        </job>
+        
+        <!-- Rebuild product index daily at 1 AM -->
+        <job name="discovery_suite_rebuild_product_index" instance="Vendor\DiscoverySuite\Cron\RebuildProductIndex" method="execute">
+            <schedule>0 1 * * *</schedule>
+        </job>
+        
+        <!-- Update recommendation models every 4 hours -->
+        <job name="discovery_suite_update_recommendation_models" instance="Vendor\DiscoverySuite\Cron\UpdateRecommendationModels" method="execute">
+            <schedule>0 */4 * * *</schedule>
+        </job>
+        
+        <!-- Sync user behavior data every 30 minutes -->
+        <job name="discovery_suite_sync_user_behavior" instance="Vendor\DiscoverySuite\Cron\SyncUserBehavior" method="execute">
+            <schedule>*/30 * * * *</schedule>
+        </job>
+        
+    </group>
+</config>

@@ -1,0 +1,374 @@
+# AI Product Discovery Suite - Production Docker Compose Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # Search Service - Production Configuration
+  search-service:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      - WORKERS=4
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Recommendation Service - Production Configuration
+  recommendation-service:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    environment:
+      - WORKERS=4
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Analytics Service - Production Configuration
+  analytics-service:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    environment:
+      - WORKERS=3
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Shopping Assistant - Production Configuration
+  shopping-assistant:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    environment:
+      - WORKERS=3
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL - Production Configuration
+  postgres:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    environment:
+      - POSTGRES_DB=discovery_prod
+      - POSTGRES_USER=discovery_prod
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./backups:/backups
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Redis - Production Configuration
+  redis:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data_prod:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Elasticsearch - Production Configuration
+  elasticsearch:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 2G
+    environment:
+      - cluster.name=discovery-cluster
+      - node.name=discovery-node-1
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTICSEARCH_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data_prod:/usr/share/elasticsearch/data
+      - ./elasticsearch/config:/usr/share/elasticsearch/config:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # RabbitMQ - Production Configuration
+  rabbitmq:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    environment:
+      - RABBITMQ_DEFAULT_USER=discovery
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+      - RABBITMQ_DEFAULT_VHOST=/discovery
+    volumes:
+      - rabbitmq_data_prod:/var/lib/rabbitmq
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Production Configuration
+  celery-worker:
+    image: ai-product-discovery-celery-worker
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    environment:
+      - CELERY_WORKER_CONCURRENCY=4
+      - CELERY_WORKER_PREFETCH_MULTIPLIER=2
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - discovery_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Flower - Celery Monitoring (Production)
+  flower:
+    image: ai-product-discovery-celery-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "shared.celery.app", "flower", "--port=5555"]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - rabbitmq
+    networks:
+      - discovery_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx - Reverse Proxy (Production)
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - search-service
+      - recommendation-service
+      - analytics-service
+      - shopping-assistant
+    networks:
+      - discovery_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Prometheus - Metrics Collection (Production)
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - discovery_network
+
+  # Grafana - Metrics Visualization (Production)
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - discovery_network
+
+volumes:
+  postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local
+  elasticsearch_data_prod:
+    driver: local
+  rabbitmq_data_prod:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  discovery_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

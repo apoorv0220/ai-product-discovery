@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Events Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    
+    <!-- Product Events -->
+    <event name="catalog_product_save_after">
+        <observer name="discovery_suite_product_save" 
+                  instance="Vendor\DiscoverySuite\Observer\ProductSaveObserver"/>
+    </event>
+    
+    <event name="catalog_product_delete_after">
+        <observer name="discovery_suite_product_delete" 
+                  instance="Vendor\DiscoverySuite\Observer\ProductDeleteObserver"/>
+    </event>
+    
+    <!-- Customer Events -->
+    <event name="customer_login">
+        <observer name="discovery_suite_customer_login" 
+                  instance="Vendor\DiscoverySuite\Observer\CustomerLoginObserver"/>
+    </event>
+    
+    <!-- Order Events -->
+    <event name="sales_order_place_after">
+        <observer name="discovery_suite_order_place" 
+                  instance="Vendor\DiscoverySuite\Observer\OrderPlaceObserver"/>
+    </event>
+    
+    <!-- Cart Events -->
+    <event name="checkout_cart_product_add_after">
+        <observer name="discovery_suite_cart_add" 
+                  instance="Vendor\DiscoverySuite\Observer\CartAddObserver"/>
+    </event>
+    
+    <!-- Search Events -->
+    <event name="catalogsearch_query_save_after">
+        <observer name="discovery_suite_search_query" 
+                  instance="Vendor\DiscoverySuite\Observer\SearchQueryObserver"/>
+    </event>
+    
+</config>

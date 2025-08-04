@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Dependency Injection Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    
+    <!-- API Interface Preferences -->
+    <preference for="Vendor\DiscoverySuite\Api\SearchInterface" 
+                type="Vendor\DiscoverySuite\Model\Search\SearchService"/>
+    <preference for="Vendor\DiscoverySuite\Api\RecommendationInterface" 
+                type="Vendor\DiscoverySuite\Model\Recommendations\RecommendationService"/>
+    <preference for="Vendor\DiscoverySuite\Api\AnalyticsInterface" 
+                type="Vendor\DiscoverySuite\Model\Analytics\AnalyticsService"/>
+    <preference for="Vendor\DiscoverySuite\Api\AssistantInterface" 
+                type="Vendor\DiscoverySuite\Model\Assistant\AssistantService"/>
+    
+    <!-- Virtual Types for HTTP Clients -->
+    <virtualType name="DiscoverySuiteSearchClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">search-service</argument>
+            <argument name="defaultPort" xsi:type="string">8001</argument>
+        </arguments>
+    </virtualType>
+    
+    <virtualType name="DiscoverySuiteRecommendationClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">recommendation-service</argument>
+            <argument name="defaultPort" xsi:type="string">8002</argument>
+        </arguments>
+    </virtualType>
+    
+    <virtualType name="DiscoverySuiteListingClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">listing-optimizer</argument>
+            <argument name="defaultPort" xsi:type="string">8003</argument>
+        </arguments>
+    </virtualType>
+    
+    <virtualType name="DiscoverySuiteAnalyticsClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">analytics-service</argument>
+            <argument name="defaultPort" xsi:type="string">8004</argument>
+        </arguments>
+    </virtualType>
+    
+    <virtualType name="DiscoverySuiteAssistantClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">shopping-assistant</argument>
+            <argument name="defaultPort" xsi:type="string">8005</argument>
+        </arguments>
+    </virtualType>
+    
+    <!-- Plugin Configuration -->
+    <type name="Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection">
+        <plugin name="discovery_suite_search_plugin" 
+                type="Vendor\DiscoverySuite\Plugin\Search\CollectionPlugin" 
+                sortOrder="100"/>
+    </type>
+    
+    <type name="Magento\Catalog\Block\Product\ListProduct">
+        <plugin name="discovery_suite_listing_plugin" 
+                type="Vendor\DiscoverySuite\Plugin\Catalog\ListProductPlugin" 
+                sortOrder="100"/>
+    </type>
+    
+    <!-- Console Commands -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="discovery_sync_catalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
+                <item name="discovery_reindex_search" xsi:type="object">Vendor\DiscoverySuite\Console\Command\ReindexSearch</item>
+                <item name="discovery_test_connection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
+            </argument>
+        </arguments>
+    </type>
+    
+    <!-- Event Observers -->
+    <type name="Vendor\DiscoverySuite\Observer\ProductSaveObserver">
+        <arguments>
+            <argument name="searchService" xsi:type="object">Vendor\DiscoverySuite\Api\SearchInterface</argument>
+        </arguments>
+    </type>
+    
+</config>

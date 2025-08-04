@@ -1,0 +1,29 @@
+# AI Product Discovery Suite - Grafana Datasources
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    basicAuth: false
+    jsonData:
+      httpMethod: POST
+      keepCookies: []
+      
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: discovery_suite
+    user: discovery
+    secureJsonData:
+      password: discovery123
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 0
+      maxIdleConns: 2
+      connMaxLifetime: 14400

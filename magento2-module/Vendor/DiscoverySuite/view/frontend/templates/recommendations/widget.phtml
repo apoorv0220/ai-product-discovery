@@ -1,0 +1,171 @@
+<?php
+/**
+ * DiscoverySuite Recommendations Widget Template
+ *
+ * @var \Vendor\DiscoverySuite\Block\Recommendations\Widget $block
+ */
+?>
+<?php if ($block->shouldShow()): ?>
+<div class="<?= $block->escapeHtml($block->getCssClasses()) ?>" 
+     data-mage-init='{"discoveryRecommendations": <?= $block->getWidgetConfig() ?>}'>
+    
+    <div class="recommendations-header">
+        <h3 class="recommendations-title"><?= $block->escapeHtml($block->getWidgetTitle()) ?></h3>
+    </div>
+    
+    <div class="recommendations-content">
+        <div class="recommendations-loading" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p><?= $block->escapeHtml(__('Loading recommendations...')) ?></p>
+        </div>
+        
+        <div class="recommendations-list" id="recommendations-container">
+            <!-- Recommendations will be populated here via JavaScript -->
+        </div>
+        
+        <div class="recommendations-error" style="display: none;">
+            <p><?= $block->escapeHtml(__('Unable to load recommendations at this time.')) ?></p>
+        </div>
+    </div>
+    
+    <div class="recommendations-actions" style="display: none;">
+        <button type="button" class="action primary load-more-recommendations">
+            <span><?= $block->escapeHtml(__('Load More')) ?></span>
+        </button>
+    </div>
+</div>
+
+<script type="text/x-magento-template" id="recommendation-item-template">
+    <div class="recommendation-item" data-product-id="<%- product.id %>" data-recommendation-id="<%- recommendationId %>">
+        <div class="product-item-info">
+            <a href="<%- product.url %>" class="product-item-photo recommendation-product-link" 
+               data-action="click" data-position="<%- position %>">
+                <% if (product.image) { %>
+                    <img src="<%- product.image %>" 
+                         alt="<%- product.name %>" 
+                         class="product-image-photo"/>
+                <% } else { %>
+                    <div class="product-image-placeholder">
+                        <span><?= $block->escapeHtml(__('No Image')) ?></span>
+                    </div>
+                <% } %>
+            </a>
+            
+            <div class="product-item-details">
+                <strong class="product-item-name">
+                    <a href="<%- product.url %>" 
+                       class="product-item-link recommendation-product-link"
+                       data-action="click" data-position="<%- position %>">
+                        <%- product.name %>
+                    </a>
+                </strong>
+                
+                <% if (product.price) { %>
+                    <div class="price-box">
+                        <% if (product.special_price && product.special_price < product.price) { %>
+                            <span class="old-price">
+                                <span class="price"><%- product.formatted_price %></span>
+                            </span>
+                            <span class="special-price">
+                                <span class="price"><%- product.formatted_special_price %></span>
+                            </span>
+                        <% } else { %>
+                            <span class="regular-price">
+                                <span class="price"><%- product.formatted_price %></span>
+                            </span>
+                        <% } %>
+                    </div>
+                <% } %>
+                
+                <% if (product.rating && product.rating > 0) { %>
+                    <div class="product-reviews-summary">
+                        <div class="rating-result" title="<%- product.rating %>%">
+                            <span style="width: <%- product.rating %>%">
+                                <span><?= $block->escapeHtml(__('Rating')) ?></span>
+                            </span>
+                        </div>
+                        <% if (product.review_count) { %>
+                            <div class="reviews-actions">
+                                <a href="<%- product.url %>#reviews">(<%- product.review_count %>)</a>
+                            </div>
+                        <% } %>
+                    </div>
+                <% } %>
+                
+                <div class="product-item-actions">
+                    <% if (product.is_saleable) { %>
+                        <div class="actions-primary">
+                            <button type="button" 
+                                    class="action tocart primary recommendation-add-to-cart"
+                                    data-product-id="<%- product.id %>"
+                                    data-action="add_to_cart"
+                                    data-position="<%- position %>">
+                                <span><?= $block->escapeHtml(__('Add to Cart')) ?></span>
+                            </button>
+                        </div>
+                    <% } %>
+                    
+                    <div class="actions-secondary">
+                        <a href="#" 
+                           class="action towishlist recommendation-add-to-wishlist"
+                           data-product-id="<%- product.id %>"
+                           data-action="add_to_wishlist"
+                           data-position="<%- position %>"
+                           title="<?= $block->escapeHtml(__('Add to Wish List')) ?>">
+                            <span><?= $block->escapeHtml(__('Add to Wish List')) ?></span>
+                        </a>
+                        
+                        <a href="#" 
+                           class="action tocompare recommendation-add-to-compare"
+                           data-product-id="<%- product.id %>"
+                           data-action="add_to_compare"
+                           data-position="<%- position %>"
+                           title="<?= $block->escapeHtml(__('Add to Compare')) ?>">
+                            <span><?= $block->escapeHtml(__('Add to Compare')) ?></span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
+
+<script type="text/x-magento-template" id="recommendation-grid-template">
+    <div class="recommendations-grid">
+        <% _.each(products, function(product, index) { %>
+            <%= itemTemplate({
+                product: product,
+                position: index + 1,
+                recommendationId: recommendationId
+            }) %>
+        <% }); %>
+    </div>
+</script>
+
+<script type="text/x-magento-template" id="recommendation-slider-template">
+    <div class="recommendations-slider">
+        <div class="slider-controls">
+            <button type="button" class="slider-prev" disabled>
+                <span><?= $block->escapeHtml(__('Previous')) ?></span>
+            </button>
+            <button type="button" class="slider-next">
+                <span><?= $block->escapeHtml(__('Next')) ?></span>
+            </button>
+        </div>
+        
+        <div class="slider-container">
+            <div class="slider-track">
+                <% _.each(products, function(product, index) { %>
+                    <div class="slider-item">
+                        <%= itemTemplate({
+                            product: product,
+                            position: index + 1,
+                            recommendationId: recommendationId
+                        }) %>
+                    </div>
+                <% }); %>
+            </div>
+        </div>
+    </div>
+</script>
+<?php endif; ?>

@@ -1,0 +1,312 @@
+<?php
+/**
+ * DiscoverySuite Analytics Pixel Template
+ *
+ * @var \Vendor\DiscoverySuite\Block\Analytics\Pixel $block
+ */
+?>
+<?php if ($block->isEnabled()): ?>
+<!-- DiscoverySuite Analytics Pixel -->
+<script type="text/javascript">
+(function() {
+    'use strict';
+    
+    // Analytics configuration
+    window.discoveryAnalytics = window.discoveryAnalytics || {};
+    window.discoveryAnalytics.config = <?= $block->getAnalyticsConfig() ?>;
+    
+    // Analytics API
+    window.discoveryAnalytics.track = function(eventType, eventData, callback) {
+        if (!window.discoveryAnalytics.config.enabled) {
+            return;
+        }
+        
+        var config = window.discoveryAnalytics.config;
+        var data = {
+            event_type: eventType,
+            event_data: eventData || {},
+            customer_id: config.customerId,
+            session_id: config.sessionId,
+            store_id: config.storeId,
+            timestamp: new Date().toISOString(),
+            page_url: window.location.href,
+            referrer: document.referrer,
+            user_agent: navigator.userAgent
+        };
+        
+        // Send tracking request
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', config.trackingUrl, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && callback) {
+                callback(xhr.status === 200, xhr.responseText);
+            }
+        };
+        xhr.send(JSON.stringify(data));
+        
+        // Also send to any other analytics systems
+        if (window.gtag) {
+            window.gtag('event', eventType, eventData);
+        }
+        if (window.dataLayer) {
+            window.dataLayer.push({
+                event: 'discovery_' + eventType,
+                eventData: eventData
+            });
+        }
+    };
+    
+    // Page view tracking
+    if (window.discoveryAnalytics.config.trackPageViews) {
+        window.discoveryAnalytics.track('page_view', window.discoveryAnalytics.config.pageData);
+    }
+    
+    // Automatic click tracking
+    if (window.discoveryAnalytics.config.trackClicks) {
+        document.addEventListener('click', function(e) {
+            var target = e.target;
+            var trackableElements = ['a', 'button', '[data-track-click]'];
+            var element = null;
+            
+            // Find trackable element
+            for (var i = 0; i < trackableElements.length; i++) {
+                element = target.closest(trackableElements[i]);
+                if (element) break;
+            }
+            
+            if (element) {
+                var clickData = {
+                    element_type: element.tagName.toLowerCase(),
+                    element_text: element.textContent ? element.textContent.trim().substring(0, 100) : '',
+                    element_href: element.href || '',
+                    element_class: element.className || '',
+                    element_id: element.id || '',
+                    position_x: e.clientX,
+                    position_y: e.clientY
+                };
+                
+                // Add custom tracking data
+                if (element.dataset.trackClick) {
+                    try {
+                        var customData = JSON.parse(element.dataset.trackClick);
+                        Object.assign(clickData, customData);
+                    } catch (e) {
+                        clickData.custom_data = element.dataset.trackClick;
+                    }
+                }
+                
+                // Add product-specific data
+                if (element.dataset.productId) {
+                    clickData.product_id = element.dataset.productId;
+                }
+                
+                window.discoveryAnalytics.track('click', clickData);
+            }
+        });
+    }
+    
+    // Form submission tracking
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (form && form.tagName === 'FORM') {
+            var formData = {
+                form_id: form.id || '',
+                form_class: form.className || '',
+                form_action: form.action || '',
+                form_method: form.method || 'get'
+            };
+            
+            // Track search forms
+            if (form.querySelector('input[name="q"]') && window.discoveryAnalytics.config.trackSearches) {
+                var searchQuery = form.querySelector('input[name="q"]').value;
+                formData.search_query = searchQuery;
+                window.discoveryAnalytics.track('search', formData);
+            } else {
+                window.discoveryAnalytics.track('form_submit', formData);
+            }
+        }
+    });
+    
+    // Scroll depth tracking
+    var scrollDepthTracked = [];
+    var scrollDepthPercentages = [25, 50, 75, 90];
+    
+    function trackScrollDepth() {
+        var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        var docHeight = Math.max(
+            document.body.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.clientHeight,
+            document.documentElement.scrollHeight,
+            document.documentElement.offsetHeight
+        );
+        var winHeight = window.innerHeight;
+        var scrollPercent = Math.round((scrollTop / (docHeight - winHeight)) * 100);
+        
+        for (var i = 0; i < scrollDepthPercentages.length; i++) {
+            var percentage = scrollDepthPercentages[i];
+            if (scrollPercent >= percentage && scrollDepthTracked.indexOf(percentage) === -1) {
+                scrollDepthTracked.push(percentage);
+                window.discoveryAnalytics.track('scroll_depth', {
+                    percentage: percentage,
+                    scroll_top: scrollTop,
+                    doc_height: docHeight
+                });
+            }
+        }
+    }
+    
+    // Throttled scroll tracking
+    var scrollTimeout;
+    window.addEventListener('scroll', function() {
+        if (scrollTimeout) {
+            clearTimeout(scrollTimeout);
+        }
+        scrollTimeout = setTimeout(trackScrollDepth, 100);
+    });
+    
+    // Time on page tracking
+    var pageStartTime = Date.now();
+    var timeOnPageTracked = false;
+    
+    function trackTimeOnPage() {
+        if (!timeOnPageTracked) {
+            var timeOnPage = Date.now() - pageStartTime;
+            window.discoveryAnalytics.track('time_on_page', {
+                time_ms: timeOnPage,
+                time_seconds: Math.round(timeOnPage / 1000)
+            });
+            timeOnPageTracked = true;
+        }
+    }
+    
+    // Track time on page when user leaves
+    window.addEventListener('beforeunload', trackTimeOnPage);
+    
+    // Track time on page after 30 seconds
+    setTimeout(function() {
+        if (!timeOnPageTracked) {
+            trackTimeOnPage();
+        }
+    }, 30000);
+    
+    // Product view tracking (for product pages)
+    if (window.discoveryAnalytics.config.pageData.page_type === 'product' && 
+        window.discoveryAnalytics.config.pageData.product_id) {
+        
+        window.discoveryAnalytics.track('product_view', {
+            product_id: window.discoveryAnalytics.config.pageData.product_id,
+            product_sku: window.discoveryAnalytics.config.pageData.product_sku,
+            product_name: window.discoveryAnalytics.config.pageData.product_name,
+            product_price: window.discoveryAnalytics.config.pageData.product_price,
+            category_ids: window.discoveryAnalytics.config.pageData.category_ids
+        });
+    }
+    
+    // Add to cart tracking
+    document.addEventListener('click', function(e) {
+        var target = e.target;
+        var addToCartBtn = target.closest('button[type="submit"]');
+        
+        if (addToCartBtn && addToCartBtn.closest('form[action*="checkout/cart/add"]')) {
+            var form = addToCartBtn.closest('form');
+            var productId = form.querySelector('input[name="product"]');
+            var qty = form.querySelector('input[name="qty"]');
+            
+            if (productId) {
+                window.discoveryAnalytics.track('add_to_cart', {
+                    product_id: productId.value,
+                    quantity: qty ? qty.value : 1,
+                    source: 'product_page'
+                });
+            }
+        }
+    });
+    
+    // Purchase tracking (for success page)
+    if (window.discoveryAnalytics.config.pageData.page_type === 'success' && 
+        window.discoveryAnalytics.config.trackPurchases) {
+        
+        // This would typically get order data from the page
+        // For now, just track that purchase page was viewed
+        window.discoveryAnalytics.track('purchase_page_view', {
+            page_type: 'success'
+        });
+    }
+    
+    // A/B Testing
+    if (window.discoveryAnalytics.config.abTestingEnabled) {
+        // Initialize A/B tests
+        window.discoveryAnalytics.abTests = {};
+        
+        window.discoveryAnalytics.getTestVariant = function(testName) {
+            if (!window.discoveryAnalytics.abTests[testName]) {
+                // Simple client-side variant assignment (could be server-side)
+                var variants = ['A', 'B'];
+                var hash = 0;
+                var str = testName + (window.discoveryAnalytics.config.customerId || window.discoveryAnalytics.config.sessionId);
+                for (var i = 0; i < str.length; i++) {
+                    var char = str.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                var variant = variants[Math.abs(hash) % variants.length];
+                window.discoveryAnalytics.abTests[testName] = variant;
+                
+                // Track test assignment
+                window.discoveryAnalytics.track('ab_test_assigned', {
+                    test_name: testName,
+                    variant: variant
+                });
+            }
+            
+            return window.discoveryAnalytics.abTests[testName];
+        };
+        
+        window.discoveryAnalytics.trackTestConversion = function(testName, conversionType) {
+            var variant = window.discoveryAnalytics.abTests[testName];
+            if (variant) {
+                window.discoveryAnalytics.track('ab_test_conversion', {
+                    test_name: testName,
+                    variant: variant,
+                    conversion_type: conversionType || 'default'
+                });
+            }
+        };
+    }
+    
+    // Error tracking
+    window.addEventListener('error', function(e) {
+        window.discoveryAnalytics.track('javascript_error', {
+            message: e.message,
+            filename: e.filename,
+            line: e.lineno,
+            column: e.colno,
+            stack: e.error ? e.error.stack : null
+        });
+    });
+    
+    // Performance tracking
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            if (window.performance && window.performance.timing) {
+                var timing = window.performance.timing;
+                var loadTime = timing.loadEventEnd - timing.navigationStart;
+                var domReady = timing.domContentLoadedEventEnd - timing.navigationStart;
+                
+                window.discoveryAnalytics.track('page_performance', {
+                    load_time: loadTime,
+                    dom_ready_time: domReady,
+                    dns_time: timing.domainLookupEnd - timing.domainLookupStart,
+                    connect_time: timing.connectEnd - timing.connectStart,
+                    response_time: timing.responseEnd - timing.requestStart
+                });
+            }
+        }, 0);
+    });
+    
+})();
+</script>
+<!-- End DiscoverySuite Analytics Pixel -->
+<?php endif; ?>
