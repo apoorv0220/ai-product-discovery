@@ -87,8 +87,9 @@ if [ -z "$DATABASE_URL" ] || [[ ! "$DATABASE_URL" =~ ^postgresql://[^:]+:[^@]+@[
         fi
     fi
     
-    # Create new DATABASE_URL
-    NEW_DATABASE_URL="postgresql://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}"
+    # URL encode password for DATABASE_URL (handle special characters)
+    PG_PASS_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${PG_PASS}', safe=''))")
+    NEW_DATABASE_URL="postgresql://${PG_USER}:${PG_PASS_ENCODED}@${PG_HOST}:${PG_PORT}/${PG_DB}"
     
     # Backup original file
     cp .env.production .env.production.backup

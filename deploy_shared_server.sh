@@ -211,7 +211,9 @@ cat > .env.production << EOF
 # ===============================
 
 # Database Configuration
-DATABASE_URL=postgresql://${PG_USER}:${PG_PASS}@localhost:5432/${PG_DB}
+# URL encode password for DATABASE_URL (handle special characters)
+PG_PASS_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${PG_PASS}', safe=''))")
+DATABASE_URL=postgresql://${PG_USER}:${PG_PASS_ENCODED}@localhost:5432/${PG_DB}
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=${PG_DB}
