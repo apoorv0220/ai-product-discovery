@@ -71,7 +71,13 @@ fi
 
 # Step 2: Update system packages
 log "Step 2: Updating system packages..."
-sudo apt update
+if ! sudo apt update; then
+    warning "Package update failed due to repository issues"
+    echo "This is likely due to broken repositories. Run this first:"
+    echo "  ./fix_ubuntu_repos.sh"
+    echo "Then try Redis installation again."
+    exit 1
+fi
 
 # Step 3: Install Redis
 log "Step 3: Installing Redis server..."
