@@ -53,6 +53,34 @@ if [ ! -d "venv" ]; then
     error "Virtual environment not found. Please run the full deployment script first."
 fi
 
+# Load environment variables safely first for validation
+log "Validating configuration..."
+set -o allexport
+source .env.production 2>/dev/null || {
+    error "Failed to load .env.production file"
+    exit 1
+}
+set +o allexport
+
+# Validate .env.production has required database configuration
+if [ -z "$DATABASE_URL" ]; then
+    error "DATABASE_URL not found in .env.production. Please run the full deployment script first."
+fi
+
+# Validate DATABASE_URL format
+if [[ ! "$DATABASE_URL" =~ ^postgresql://[^:]+:[^@]+@[^:]+:[0-9]+/[^/]+$ ]]; then
+    error "Invalid DATABASE_URL format in .env.production: $DATABASE_URL"
+    echo "Expected format: postgresql://username:password@host:port/database"
+    echo ""
+    echo "Please either:"
+    echo "1. Run the full deployment script: ./deploy_shared_server.sh"
+    echo "2. Or manually check/fix the DATABASE_URL in .env.production"
+    echo "3. Current DATABASE_URL: $DATABASE_URL"
+    exit 1
+fi
+
+log "✅ Configuration validated successfully"
+
 # Activate virtual environment
 log "Activating virtual environment..."
 source venv/bin/activate
@@ -60,13 +88,15 @@ source venv/bin/activate
 # Step 6: Initialize Database
 log "Step 6: Initializing database tables..."
 
-# Load environment variables safely
+# Re-load environment variables for database initialization
 set -o allexport
 source .env.production 2>/dev/null || {
     error "Failed to load .env.production file"
     exit 1
 }
 set +o allexport
+
+log "Using DATABASE_URL: ${DATABASE_URL}"
 
 cd backend
 python3 -c "
