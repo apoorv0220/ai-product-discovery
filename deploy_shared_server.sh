@@ -96,16 +96,39 @@ fi
 
 # Test Redis connection
 log "Testing Redis connection..."
-if redis-cli -h localhost -p 6379 ping &> /dev/null; then
-    log "✅ Redis connection successful"
-else
+
+# Try multiple connection methods
+REDIS_WORKING=false
+
+# Method 1: Using 127.0.0.1 (your working method)
+if redis-cli -h 127.0.0.1 -p 6379 ping &> /dev/null; then
+    log "✅ Redis connection successful (127.0.0.1:6379)"
+    REDIS_WORKING=true
+    REDIS_HOST="127.0.0.1"
+# Method 2: Using localhost
+elif redis-cli -h localhost -p 6379 ping &> /dev/null; then
+    log "✅ Redis connection successful (localhost:6379)"
+    REDIS_WORKING=true
+    REDIS_HOST="localhost"
+# Method 3: Default connection
+elif redis-cli ping &> /dev/null; then
+    log "✅ Redis connection successful (default connection)"
+    REDIS_WORKING=true
+    REDIS_HOST="localhost"
+fi
+
+if [ "$REDIS_WORKING" = false ]; then
     error "❌ Redis connection failed. Please ensure Redis is running on port 6379"
     echo ""
-    echo "Redis is not installed or not running. To fix this:"
-    echo "1. Install Redis: ./install_redis.sh"
-    echo "2. Check Redis status: ./check_redis_status.sh"
-    echo "3. Then re-run this deployment script"
+    echo "Redis connection troubleshooting:"
+    echo "1. Check if Redis is running: sudo systemctl status redis-server"
+    echo "2. Test manual connection: redis-cli -h 127.0.0.1 -p 6379 ping"
+    echo "3. Install Redis if needed: ./install_redis.sh"
+    echo "4. Check Redis status: ./check_redis_status.sh"
+    echo "5. Then re-run this deployment script"
     exit 1
+else
+    info "Using Redis host: $REDIS_HOST"
 fi
 
 # Step 2: Setup Application Directory
@@ -196,8 +219,8 @@ POSTGRES_USER=${PG_USER}
 POSTGRES_PASSWORD=${PG_PASS}
 
 # Redis Configuration
-REDIS_URL=redis://localhost:6379/0
-REDIS_HOST=localhost
+REDIS_URL=redis://${REDIS_HOST}:6379/0
+REDIS_HOST=${REDIS_HOST}
 REDIS_PORT=6379
 REDIS_DB=0
 
@@ -228,8 +251,8 @@ ELASTICSEARCH_URL=http://localhost:9200
 WEAVIATE_URL=http://localhost:8080
 
 # Celery Configuration
-CELERY_BROKER_URL=redis://localhost:6379/1
-CELERY_RESULT_BACKEND=redis://localhost:6379/2
+CELERY_BROKER_URL=redis://${REDIS_HOST}:6379/1
+CELERY_RESULT_BACKEND=redis://${REDIS_HOST}:6379/2
 
 # Logging
 LOG_LEVEL=INFO
