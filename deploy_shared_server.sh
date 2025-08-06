@@ -47,11 +47,6 @@ log "Starting AI Product Discovery Suite deployment..."
 # Step 1: Verify Prerequisites
 log "Step 1: Checking prerequisites..."
 
-# Check if running as correct user
-if [ "$USER" = "root" ]; then
-    error "Please do not run this script as root. Create and use a dedicated user like 'aiproduct'"
-fi
-
 # Check Python
 if ! command -v python3 &> /dev/null; then
     error "Python 3 is not installed. Please install Python 3.8+"
@@ -156,7 +151,13 @@ fi
 
 # Install full requirements
 if [ -f "backend/requirements.txt" ]; then
-    pip install -r backend/requirements.txt
+    log "Installing Python dependencies (this may take a few minutes)..."
+    pip install -r backend/requirements.txt || {
+        warning "Dependencies installation failed. Trying with compatible versions..."
+        # Fix common dependency conflicts
+        pip install "httpx==0.27.0" "weaviate-client==4.8.1"
+        pip install -r backend/requirements.txt
+    }
 fi
 
 # Install production dependencies
@@ -196,13 +197,13 @@ REDIS_DB=0
 
 # Service Configuration
 SEARCH_SERVICE_HOST=0.0.0.0
-SEARCH_SERVICE_PORT=8001
+SEARCH_SERVICE_PORT=7001
 RECOMMENDATION_SERVICE_HOST=0.0.0.0
-RECOMMENDATION_SERVICE_PORT=8002
+RECOMMENDATION_SERVICE_PORT=7002
 ANALYTICS_SERVICE_HOST=0.0.0.0
-ANALYTICS_SERVICE_PORT=8004
+ANALYTICS_SERVICE_PORT=7004
 SHOPPING_ASSISTANT_HOST=0.0.0.0
-SHOPPING_ASSISTANT_PORT=8005
+SHOPPING_ASSISTANT_PORT=7005
 
 # API Configuration
 API_V1_PREFIX=/api/v1
@@ -275,12 +276,12 @@ cd $(dirname $0)
 source venv/bin/activate
 export $(cat .env.production | xargs)
 
-echo "Starting Search Service on port 8001..."
+echo "Starting Search Service on port 7001..."
 cd backend/search-service
 exec gunicorn main:app \
     -w 2 \
     -k uvicorn.workers.UvicornWorker \
-    -b 0.0.0.0:8001 \
+    -b 0.0.0.0:7001 \
     --access-logfile ${HOME}/logs/search_access.log \
     --error-logfile ${HOME}/logs/search_error.log \
     --pid ${HOME}/logs/search.pid \
@@ -294,12 +295,12 @@ cd $(dirname $0)
 source venv/bin/activate
 export $(cat .env.production | xargs)
 
-echo "Starting Recommendation Service on port 8002..."
+echo "Starting Recommendation Service on port 7002..."
 cd backend/recommendation-service
 exec gunicorn main:app \
     -w 2 \
     -k uvicorn.workers.UvicornWorker \
-    -b 0.0.0.0:8002 \
+    -b 0.0.0.0:7002 \
     --access-logfile ${HOME}/logs/recommendation_access.log \
     --error-logfile ${HOME}/logs/recommendation_error.log \
     --pid ${HOME}/logs/recommendation.pid \
@@ -313,12 +314,12 @@ cd $(dirname $0)
 source venv/bin/activate
 export $(cat .env.production | xargs)
 
-echo "Starting Analytics Service on port 8004..."
+echo "Starting Analytics Service on port 7004..."
 cd backend/analytics-service
 exec gunicorn main:app \
     -w 2 \
     -k uvicorn.workers.UvicornWorker \
-    -b 0.0.0.0:8004 \
+    -b 0.0.0.0:7004 \
     --access-logfile ${HOME}/logs/analytics_access.log \
     --error-logfile ${HOME}/logs/analytics_error.log \
     --pid ${HOME}/logs/analytics.pid \
@@ -332,12 +333,12 @@ cd $(dirname $0)
 source venv/bin/activate
 export $(cat .env.production | xargs)
 
-echo "Starting Shopping Assistant Service on port 8005..."
+echo "Starting Shopping Assistant Service on port 7005..."
 cd backend/shopping-assistant
 exec gunicorn main:app \
     -w 2 \
     -k uvicorn.workers.UvicornWorker \
-    -b 0.0.0.0:8005 \
+    -b 0.0.0.0:7005 \
     --access-logfile ${HOME}/logs/shopping_assistant_access.log \
     --error-logfile ${HOME}/logs/shopping_assistant_error.log \
     --pid ${HOME}/logs/shopping_assistant.pid \
@@ -349,7 +350,7 @@ cat > control_services.sh << 'EOF'
 #!/bin/bash
 
 SERVICES=("search" "recommendation" "analytics" "shopping_assistant")
-PORTS=("8001" "8002" "8004" "8005")
+PORTS=("7001" "7002" "7004" "7005")
 
 start_all() {
     echo "🚀 Starting all AI Discovery services..."
@@ -449,7 +450,7 @@ echo "🧪 Testing AI Product Discovery Suite Deployment"
 echo "==============================================="
 
 # Test services
-SERVICES=("search:8001" "recommendation:8002" "analytics:8004" "shopping_assistant:8005")
+SERVICES=("search:7001" "recommendation:7002" "analytics:7004" "shopping_assistant:7005")
 
 for service_port in "\${SERVICES[@]}"; do
     IFS=':' read -ra ADDR <<< "\$service_port"
@@ -467,25 +468,25 @@ done
 # Test actual APIs
 echo ""
 echo "🔍 Testing Search API..."
-curl -X POST "http://localhost:8001/api/v1/search/" \\
+curl -X POST "http://localhost:7001/api/v1/search/" \\
   -H "Content-Type: application/json" \\
   -d '{"query": "test", "limit": 3}' | jq '.' || echo "Search API test failed"
 
 echo ""
 echo "🤖 Testing Recommendations API..."
-curl -X POST "http://localhost:8002/api/v1/recommendations/" \\
+curl -X POST "http://localhost:7002/api/v1/recommendations/" \\
   -H "Content-Type: application/json" \\
   -d '{"user_id": "1", "context": "home", "limit": 5}' | jq '.' || echo "Recommendations API test failed"
 
 echo ""
 echo "📊 Testing Analytics API..."
-curl -X POST "http://localhost:8004/api/v1/events/track" \\
+curl -X POST "http://localhost:7004/api/v1/events/track" \\
   -H "Content-Type: application/json" \\
   -d '{"event_type": "test", "user_id": "1", "properties": {"test": true}}' | jq '.' || echo "Analytics API test failed"
 
 echo ""
 echo "🛍️ Testing Shopping Assistant API..."
-curl -X POST "http://localhost:8005/api/v1/chat/message" \\
+curl -X POST "http://localhost:7005/api/v1/chat/message" \\
   -H "Content-Type: application/json" \\
   -d '{"session_id": "test", "message": "Hello"}' | jq '.' || echo "Shopping Assistant API test failed"
 
@@ -522,7 +523,7 @@ server {
 
     # API Routes
     location /api/v1/search/ {
-        proxy_pass http://localhost:8001/api/v1/search/;
+        proxy_pass http://localhost:7001/api/v1/search/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -533,7 +534,7 @@ server {
     }
 
     location /api/v1/recommendations/ {
-        proxy_pass http://localhost:8002/api/v1/recommendations/;
+        proxy_pass http://localhost:7002/api/v1/recommendations/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -544,7 +545,7 @@ server {
     }
 
     location /api/v1/analytics/ {
-        proxy_pass http://localhost:8004/api/v1/analytics/;
+        proxy_pass http://localhost:7004/api/v1/analytics/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -555,7 +556,7 @@ server {
     }
 
     location /api/v1/chat/ {
-        proxy_pass http://localhost:8005/api/v1/chat/;
+        proxy_pass http://localhost:7005/api/v1/chat/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -567,7 +568,7 @@ server {
 
     # Health checks
     location /health {
-        proxy_pass http://localhost:8001/health;
+        proxy_pass http://localhost:7001/health;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }

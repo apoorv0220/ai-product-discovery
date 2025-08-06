@@ -16,7 +16,7 @@ aioredis==2.0.1
 
 # Search and Vector DB
 elasticsearch[async]==8.16.0
-weaviate-client==4.9.5
+weaviate-client==4.8.1
 
 # ML and AI
 numpy==2.2.1
@@ -31,7 +31,7 @@ celery[redis]==5.4.0
 flower==2.0.1
 
 # HTTP Client
-httpx==0.28.1
+httpx==0.27.0
 aiohttp==3.11.10
 
 # Data Processing
