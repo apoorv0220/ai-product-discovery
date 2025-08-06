@@ -100,6 +100,12 @@ if redis-cli -h localhost -p 6379 ping &> /dev/null; then
     log "✅ Redis connection successful"
 else
     error "❌ Redis connection failed. Please ensure Redis is running on port 6379"
+    echo ""
+    echo "Redis is not installed or not running. To fix this:"
+    echo "1. Install Redis: ./install_redis.sh"
+    echo "2. Check Redis status: ./check_redis_status.sh"
+    echo "3. Then re-run this deployment script"
+    exit 1
 fi
 
 # Step 2: Setup Application Directory
