@@ -272,7 +272,13 @@ log "✅ Environment configuration created"
 # Step 6: Initialize Database
 log "Step 6: Initializing database tables..."
 
-export $(cat .env.production | xargs)
+# Load environment variables safely
+set -o allexport
+source .env.production 2>/dev/null || {
+    error "Failed to load .env.production file"
+    exit 1
+}
+set +o allexport
 
 cd backend
 python3 -c "
