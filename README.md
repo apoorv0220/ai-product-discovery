@@ -9,7 +9,7 @@
 
 A complete, production-ready suite that transforms any e-commerce store into an intelligent shopping experience using advanced AI, machine learning, and real-time analytics. Built as microservices with plug-and-play integrations for Magento 2, Shopify, WooCommerce, and more.
 
-🎯 **[Quick Start on Localhost](README_LOCALHOST.md)** | 📚 **[Full Documentation](LOCAL_VERIFICATION_GUIDE.md)** | 🚀 **[Production Deployment](PRODUCTION_DEPLOYMENT_GUIDE.md)**
+🎯 **[Quick Start on Localhost](README_LOCALHOST.md)** | 🌐 **[Shared Server Deployment](README_SHARED_SERVER.md)** | 📚 **[Full Documentation](LOCAL_VERIFICATION_GUIDE.md)** | 🚀 **[Production Deployment](PRODUCTION_DEPLOYMENT_GUIDE.md)**
 
 ---
 
@@ -179,6 +179,13 @@ python scripts/init_dummy_data.py
 ```bash
 # Localhost (3 minutes)
 ./quick_start.sh
+```
+
+### Shared Server (Existing PostgreSQL/Redis)
+*Perfect for beginners with shared hosting*
+```bash
+# Automated deployment for shared servers
+./deploy_shared_server.sh
 ```
 
 ### Production Deployment
