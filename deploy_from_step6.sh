@@ -1,50 +1,38 @@
-#!/bin/bash
+# Activate virtual environment
+log "Activating virtual environment..."
+source venv/bin/activate
 
-# 🚀 AI Product Discovery Suite - Deploy From Step 6
-# Resume deployment from Step 6 (Database Initialization)
+# Step 5.5: Install missing database drivers if needed
+log "Step 5.5: Installing missing database drivers..."
 
-set -e
+# Check and install psycopg2-binary if missing
+if ! python3 -c "import psycopg2" 2>/dev/null; then
+    log "Installing psycopg2-binary..."
+    pip install psycopg2-binary==2.9.9
+fi
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Check and install asyncpg if missing
+if ! python3 -c "import asyncpg" 2>/dev/null; then
+    log "Installing asyncpg..."
+    pip install asyncpg==0.30.0
+fi
 
-# Logging function
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
-}
+# Install any other missing critical dependencies
+log "Installing/updating critical dependencies..."
+pip install sqlalchemy[asyncio] alembic structlog
 
-error() {
-    echo -e "${RED}[ERROR] $1${NC}"
+# Step 6: Initialize Database
+log "Step 6: Initializing database tables..."
+
+# Re-load environment variables for database initialization
+set -o allexport
+source .env.production 2>/dev/null || {
+    error "Failed to load .env.production file"
     exit 1
 }
+set +o allexport
 
-warning() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
-
-info() {
-    echo -e "${BLUE}[INFO] $1${NC}"
-}
-
-echo -e "${BLUE}"
-cat << "EOF"
-   _____ _____   _____               _            _     
-  |  _  |     | |  _  |___ ___ ___ _| |_ _ ___   _| |___ 
-  |     |-   -| |   __|  _| . | . | . | | |  _| |  _| .'|
-  |__|__|_____| |__|  |_| |___|___|___|___|_|   |_| |__,|
-                                                        
-    Resume Deployment From Step 6
-EOF
-echo -e "${NC}"
-
-log "Resuming AI Product Discovery Suite deployment from Step 6..."
-
-# Check if we're in the right directory
-if [ ! -f ".env.production" ]; then
+log "Using DATABASE_URL: ${DATABASE_URL}"on" ]; then
     error "Not in correct directory or .env.production not found. Please run from the ai-product-discovery directory."
 fi
 
@@ -84,6 +72,25 @@ log "✅ Configuration validated successfully"
 # Activate virtual environment
 log "Activating virtual environment..."
 source venv/bin/activate
+
+# Step 5.5: Install missing database drivers if needed
+log "Step 5.5: Installing missing database drivers..."
+
+# Check and install psycopg2-binary if missing
+if ! python3 -c "import psycopg2" 2>/dev/null; then
+    log "Installing psycopg2-binary..."
+    pip install psycopg2-binary==2.9.9
+fi
+
+# Check and install asyncpg if missing
+if ! python3 -c "import asyncpg" 2>/dev/null; then
+    log "Installing asyncpg..."
+    pip install asyncpg==0.30.0
+fi
+
+# Install any other missing critical dependencies
+log "Installing/updating critical dependencies..."
+pip install sqlalchemy[asyncio] alembic structlog
 
 # Step 6: Initialize Database
 log "Step 6: Initializing database tables..."

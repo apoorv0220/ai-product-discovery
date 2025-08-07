@@ -192,6 +192,12 @@ fi
 # Install production dependencies
 pip install gunicorn supervisor
 
+# Ensure critical database drivers are installed
+log "Installing critical database drivers..."
+pip install psycopg2-binary==2.9.9 asyncpg==0.30.0 || {
+    warning "Some database drivers may have failed to install"
+}
+
 # Step 5: Create Environment Configuration
 log "Step 5: Creating environment configuration..."
 
