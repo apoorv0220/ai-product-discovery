@@ -193,12 +193,42 @@ log "✅ Environment configuration created"
 # Step 4: Initialize Database
 log "Step 4: Initializing database schema..."
 
+# Ensure python3-full and venv are installed
+log "Checking Python virtual environment support..."
+if ! python3 -m venv --help &>/dev/null; then
+    log "Installing python3-venv and dependencies..."
+    sudo apt update || warning "Failed to update package list"
+    sudo apt install -y python3-full python3-venv python3-pip python3-dev python3-distutils python3-setuptools build-essential || {
+        error "Failed to install required Python packages"
+    }
+fi
+
+# Check for PEP 668 externally-managed-environment
+if python3 -c "import sys; sys.exit(0 if hasattr(sys, 'base_prefix') else 1)" 2>/dev/null; then
+    info "✅ Python environment ready for virtual environment creation"
+else
+    warning "Python environment may have issues, attempting to fix..."
+    sudo apt install -y python3-full python3-venv --reinstall || {
+        error "Failed to fix Python environment"
+    }
+fi
+
 # Create a temporary Python environment for database initialization
+log "Creating temporary Python virtual environment..."
+rm -rf temp_env 2>/dev/null || true
 python3 -m venv temp_env
+
+# Activate virtual environment
+log "Activating virtual environment..."
 source temp_env/bin/activate
 
-# Install required packages
-pip install sqlalchemy[asyncio]==2.0.36 asyncpg==0.30.0 psycopg2-binary==2.9.9 alembic==1.14.0
+# Upgrade pip in virtual environment
+log "Upgrading pip in virtual environment..."
+python -m pip install --upgrade pip
+
+# Install required packages in virtual environment
+log "Installing Python dependencies in virtual environment..."
+pip install sqlalchemy[asyncio]==2.0.36 asyncpg==0.30.0 psycopg2-binary==2.9.9 alembic==1.14.0 structlog==24.4.0
 
 # Load environment variables safely
 set -o allexport
