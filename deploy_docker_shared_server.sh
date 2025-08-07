@@ -152,7 +152,7 @@ FLOWER_EXTERNAL_PORT=7006
 
 # API Configuration
 API_V1_PREFIX=/api/v1
-API_TITLE=AI Product Discovery Suite
+API_TITLE="AI Product Discovery Suite"
 API_VERSION=1.0.0
 API_DOMAIN=${API_DOMAIN}
 
@@ -178,7 +178,7 @@ ENVIRONMENT=production
 DEBUG=false
 
 # CORS (adjust for your domain)
-CORS_ORIGINS=["http://localhost:3000", "https://${API_DOMAIN}"]
+CORS_ORIGINS='["http://localhost:3000", "https://${API_DOMAIN}"]'
 
 # Magento Integration (update with your details)
 MAGENTO_BASE_URL=https://your-magento-site.com
@@ -200,9 +200,18 @@ source temp_env/bin/activate
 # Install required packages
 pip install sqlalchemy[asyncio]==2.0.36 asyncpg==0.30.0 psycopg2-binary==2.9.9 alembic==1.14.0
 
-# Load environment variables
+# Load environment variables safely
 set -o allexport
-source .env.docker-shared-server
+if ! source .env.docker-shared-server 2>/dev/null; then
+    error "Failed to load environment variables. Please check .env.docker-shared-server for syntax errors."
+    echo ""
+    echo "Common issues:"
+    echo "- Unquoted values with spaces"
+    echo "- Special characters in values"
+    echo ""
+    echo "Quick fix: ./fix_env_file.sh"
+    exit 1
+fi
 set +o allexport
 
 # Initialize database
