@@ -1,11 +1,5 @@
-# AI Product Discovery Suite - Celery Worker/Flower Dockerfile
-#
-# @category    Infrastructure  
-# @author      AI Product Discovery Team
-# @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
-# @license     https://opensource.org/licenses/MIT MIT License
-
-FROM python:3.13-slim
+# AI Product Discovery Suite - Celery Worker and Flower
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -19,24 +13,21 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    curl \
+    gcc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install base requirements first (for better caching)
-COPY requirements-base.txt .
-RUN pip install --no-cache-dir -r requirements-base.txt
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install additional requirements for celery
-RUN pip install --no-cache-dir celery[redis]==5.4.0 flower==2.0.1
-
-# Copy shared code
-COPY shared/ ./shared/
+# Copy all backend code
+COPY . /app/
 
 # Create non-root user
-RUN useradd --create-home --shell /bin/bash discovery && \
-    chown -R discovery:discovery /app
-USER discovery
+RUN useradd --create-home --shell /bin/bash celery && \
+    chown -R celery:celery /app
+USER celery
 
-# Default command (overridden in docker-compose.yml)
-CMD ["celery", "--version"]
+# Default command (can be overridden)
+CMD ["celery", "-A", "shared.celery.app", "worker", "--loglevel=info"]

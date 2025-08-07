@@ -1,11 +1,5 @@
-# AI Product Discovery Suite - Shopping Assistant Service Dockerfile
-#
-# @category    Infrastructure  
-# @author      AI Product Discovery Team
-# @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
-# @license     https://opensource.org/licenses/MIT MIT License
-
-FROM python:3.13-slim
+# AI Product Discovery Suite - Shopping Assistant Service
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -20,12 +14,13 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    gcc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install base requirements first (for better caching)
-COPY requirements-base.txt .
-RUN pip install --no-cache-dir -r requirements-base.txt
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy service code
 COPY shopping-assistant/ ./shopping-assistant/
@@ -37,11 +32,11 @@ RUN useradd --create-home --shell /bin/bash discovery && \
 USER discovery
 
 # Expose port
-EXPOSE 8005
+EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8005/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Run application
-CMD ["python", "shopping-assistant/main.py"]
+CMD ["uvicorn", "shopping-assistant.main:app", "--host", "0.0.0.0", "--port", "8000"]
