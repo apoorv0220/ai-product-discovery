@@ -197,7 +197,9 @@ RUN pip install --no-cache-dir \\
     asyncpg==0.30.0 \\
     psycopg2-binary==2.9.9 \\
     alembic==1.14.0 \\
-    structlog==24.4.0
+    structlog==24.4.0 \\
+    pydantic-settings==2.8.0 \\
+    pydantic==2.9.2
 
 # Copy backend code
 COPY backend/ /app/backend/

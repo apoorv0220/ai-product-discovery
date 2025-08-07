@@ -136,7 +136,7 @@ create_deployment_venv() {
     python -m pip install --upgrade pip
     
     # Install deployment dependencies
-    pip install sqlalchemy[asyncio]==2.0.36 asyncpg==0.30.0 psycopg2-binary==2.9.9 alembic==1.14.0 structlog==24.4.0
+    pip install sqlalchemy[asyncio]==2.0.36 asyncpg==0.30.0 psycopg2-binary==2.9.9 alembic==1.14.0 structlog==24.4.0 pydantic-settings==2.8.0 pydantic==2.9.2
     
     # Deactivate
     deactivate
