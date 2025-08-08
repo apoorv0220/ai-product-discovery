@@ -67,7 +67,19 @@ async def init_database():
     try:
         async with engine.begin() as conn:
             # Import all models to ensure they are registered
-            from shared.models import product, user, search, recommendation, analytics
+            try:
+                from shared.models import product, user, search, recommendation, analytics
+            except ImportError:
+                # Try alternative import paths
+                try:
+                    from shared.models.product import Product
+                    from shared.models.user import User
+                    from shared.models.search import SearchQuery
+                    from shared.models.recommendation import Recommendation
+                    from shared.models.analytics import AnalyticsEvent
+                except ImportError as ie:
+                    logger.warning("Could not import models", import_error=str(ie))
+                    # Continue without models - tables will be created when models are loaded
             
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)

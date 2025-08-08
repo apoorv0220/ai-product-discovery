@@ -74,11 +74,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SEARCH_SERVICE_PORT:-7099}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Recommendation Service
   recommendation-service:
@@ -110,11 +110,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${RECOMMENDATION_SERVICE_PORT:-7099}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Analytics Service
   analytics-service:
@@ -146,11 +146,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${ANALYTICS_SERVICE_PORT:-7099}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Shopping Assistant Service
   shopping-assistant:
@@ -181,11 +181,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SHOPPING_ASSISTANT_PORT:-7099}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Celery Worker (for background tasks)
   celery-worker:

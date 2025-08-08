@@ -127,29 +127,45 @@ def get_settings() -> Settings:
 # Service-specific settings classes
 class SearchServiceSettings(Settings):
     """Search service specific settings"""
-    API_PORT: int = 8001
     SERVICE_NAME: str = "search-service"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Use environment variable or default to 7099
+        self.API_PORT = int(os.getenv('SEARCH_SERVICE_PORT', 7099))
 
 
 class RecommendationServiceSettings(Settings):
     """Recommendation service specific settings"""
-    API_PORT: int = 8002
     SERVICE_NAME: str = "recommendation-service"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.API_PORT = int(os.getenv('RECOMMENDATION_SERVICE_PORT', 7099))
 
 
 class ListingOptimizerSettings(Settings):
     """Listing optimizer specific settings"""
-    API_PORT: int = 8003
     SERVICE_NAME: str = "listing-optimizer"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.API_PORT = int(os.getenv('LISTING_OPTIMIZER_PORT', 7099))
 
 
 class AnalyticsServiceSettings(Settings):
     """Analytics service specific settings"""
-    API_PORT: int = 8004
     SERVICE_NAME: str = "analytics-service"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.API_PORT = int(os.getenv('ANALYTICS_SERVICE_PORT', 7099))
 
 
 class ShoppingAssistantSettings(Settings):
     """Shopping assistant specific settings"""
-    API_PORT: int = 8005
     SERVICE_NAME: str = "shopping-assistant"
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.API_PORT = int(os.getenv('SHOPPING_ASSISTANT_PORT', 7099))

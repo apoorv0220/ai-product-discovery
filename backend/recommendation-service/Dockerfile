@@ -34,9 +34,7 @@ USER discovery
 # Expose port
 EXPOSE 7099
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:7099/health || exit 1
+# Health check removed - using docker-compose healthcheck instead
 
 # Run application
 CMD ["uvicorn", "recommendation-service.main:app", "--host", "0.0.0.0", "--port", "7099"]
