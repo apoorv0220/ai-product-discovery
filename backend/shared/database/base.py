@@ -64,11 +64,14 @@ async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_database():
     """Initialize database tables"""
+    logger = structlog.get_logger()
+    
     try:
         async with engine.begin() as conn:
             # Import all models to ensure they are registered
             try:
                 from shared.models import product, user, search, recommendation, analytics
+                logger.info("Successfully imported all models")
             except ImportError:
                 # Try alternative import paths
                 try:
@@ -77,6 +80,7 @@ async def init_database():
                     from shared.models.search import SearchQuery
                     from shared.models.recommendation import Recommendation
                     from shared.models.analytics import AnalyticsEvent
+                    logger.info("Successfully imported individual models")
                 except ImportError as ie:
                     logger.warning("Could not import models", import_error=str(ie))
                     # Continue without models - tables will be created when models are loaded
@@ -84,11 +88,9 @@ async def init_database():
             # Create all tables
             await conn.run_sync(Base.metadata.create_all)
             
-        logger = structlog.get_logger()
         logger.info("Database initialized successfully")
         
     except Exception as e:
-        logger = structlog.get_logger()
         logger.warning("Database initialization failed", error=str(e))
         # Don't raise the exception - allow the service to start without database
         pass
