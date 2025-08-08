@@ -66,7 +66,7 @@ class HttpClient
         ScopeConfigInterface $scopeConfig,
         LoggerInterface $logger,
         string $baseUri = '',
-        string $defaultPort = '8000'
+        string $defaultPort = '7099'
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->logger = $logger;
