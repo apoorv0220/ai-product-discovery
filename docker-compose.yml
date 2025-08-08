@@ -32,7 +32,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
 
   # Recommendation Service
   recommendation-service:
@@ -65,7 +65,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
 
   # Analytics Service
   analytics-service:
@@ -98,7 +98,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
 
   # Shopping Assistant Service
   shopping-assistant:
@@ -130,7 +130,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
 
   # Celery Worker (for background tasks)
   celery-worker:
@@ -153,7 +153,7 @@ services:
     networks:
       - ai-discovery
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
     depends_on:
       - search-service
       - recommendation-service
@@ -176,7 +176,7 @@ services:
     networks:
       - ai-discovery
     extra_hosts:
-      - "host.docker.internal:172.17.0.1"
+      - "host.docker.internal:localhost"
     depends_on:
       - celery-worker
 
