@@ -32,7 +32,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
 
   # Recommendation Service
   recommendation-service:
@@ -65,7 +65,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
 
   # Analytics Service
   analytics-service:
@@ -98,7 +98,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
 
   # Shopping Assistant Service
   shopping-assistant:
@@ -130,7 +130,7 @@ services:
       retries: 3
       start_period: 40s
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
 
   # Celery Worker (for background tasks)
   celery-worker:
@@ -153,7 +153,7 @@ services:
     networks:
       - ai-discovery
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
     depends_on:
       - search-service
       - recommendation-service
@@ -165,7 +165,7 @@ services:
       context: ./backend
       dockerfile: shared/Dockerfile.celery
     container_name: ai_discovery_flower
-    command: celery -A shared.celery.app flower --port=5555 --broker=${CELERY_BROKER_URL}
+    command: celery -A shared.celery.app flower --port=5555
     ports:
       - "${FLOWER_EXTERNAL_PORT:-7006}:5555"
     environment:
@@ -176,7 +176,7 @@ services:
     networks:
       - ai-discovery
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:172.17.0.1"
     depends_on:
       - celery-worker
 
