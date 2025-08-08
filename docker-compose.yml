@@ -31,8 +31,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    extra_hosts:
-      - "host.docker.internal:localhost"
 
   # Recommendation Service
   recommendation-service:
@@ -64,8 +62,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    extra_hosts:
-      - "host.docker.internal:localhost"
 
   # Analytics Service
   analytics-service:
@@ -97,8 +93,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    extra_hosts:
-      - "host.docker.internal:localhost"
 
   # Shopping Assistant Service
   shopping-assistant:
@@ -129,8 +123,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    extra_hosts:
-      - "host.docker.internal:localhost"
 
   # Celery Worker (for background tasks)
   celery-worker:
@@ -152,8 +144,6 @@ services:
     restart: unless-stopped
     networks:
       - ai-discovery
-    extra_hosts:
-      - "host.docker.internal:localhost"
     depends_on:
       - search-service
       - recommendation-service
@@ -175,8 +165,6 @@ services:
     restart: unless-stopped
     networks:
       - ai-discovery
-    extra_hosts:
-      - "host.docker.internal:localhost"
     depends_on:
       - celery-worker
 
