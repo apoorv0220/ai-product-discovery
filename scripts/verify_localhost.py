@@ -26,7 +26,7 @@ class LocalhostVerifier:
             "PostgreSQL": {"port": 5432, "check_cmd": "pg_isready -h localhost -p 5432"},
             "Redis": {"port": 6379, "url": "http://localhost:6379"},
             "Elasticsearch": {"port": 9200, "url": "http://localhost:9200"},
-            "Weaviate": {"port": 8080, "url": "http://localhost:8080/v1/meta"},
+            "Weaviate": {"port": 8065, "url": "http://localhost:8065/v1/meta"},
             "RabbitMQ": {"port": 15672, "url": "http://localhost:15672"},
             "Search Service": {"port": 8001, "url": "http://localhost:8001/health/"},
             "Recommendation Service": {"port": 8002, "url": "http://localhost:8002/health/"},
@@ -295,7 +295,7 @@ class LocalhostVerifier:
         print(f"   • Shopping Assistant API: http://localhost:8005/api/v1/chat/")
         print(f"   • RabbitMQ Management: http://localhost:15672/")
         print(f"   • Elasticsearch: http://localhost:9200/")
-        print(f"   • Weaviate: http://localhost:8080/v1/meta")
+        print(f"   • Weaviate: http://localhost:8065/v1/meta")
 
 async def main():
     """Main verification function"""

@@ -211,7 +211,7 @@ services:
     image: cr.weaviate.io/semitechnologies/weaviate:1.24.5
     container_name: ai_discovery_weaviate
     ports:
-      - "${WEAVIATE_EXTERNAL_PORT:-8080}:8080"
+      - "${WEAVIATE_EXTERNAL_PORT:-8065}:8065"
       - "50051:50051"
     environment:
       QUERY_DEFAULTS_LIMIT: 25
@@ -224,7 +224,7 @@ services:
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/v1/meta", "||", "exit", "1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8065/v1/meta", "||", "exit", "1"]
       interval: 30s
       timeout: 10s
       retries: 3

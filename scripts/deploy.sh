@@ -138,7 +138,7 @@ done
 
 # Wait for Weaviate
 print_status "Waiting for Weaviate..."
-until curl -s http://localhost:8080/v1/meta | grep -q version; do
+until curl -s http://localhost:8065/v1/meta | grep -q version; do
     sleep 5
 done
 

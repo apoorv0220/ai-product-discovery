@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     ELASTICSEARCH_PASSWORD: Optional[str] = None
     
     # Weaviate
-    WEAVIATE_URL: str = "http://localhost:8080"
+    WEAVIATE_URL: str = "http://localhost:8065"
     WEAVIATE_API_KEY: Optional[str] = None
     
     # Celery
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8080"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8065"]
     
     # Logging
     LOG_LEVEL: str = "INFO"

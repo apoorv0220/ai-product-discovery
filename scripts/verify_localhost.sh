@@ -133,7 +133,7 @@ done
 # Check Weaviate
 print_status "Checking Weaviate..."
 for i in {1..60}; do
-    if curl -s http://localhost:8080/v1/meta | grep -q "version"; then
+    if curl -s http://localhost:8065/v1/meta | grep -q "version"; then
         print_status "Weaviate is ready"
         break
     fi
@@ -486,7 +486,7 @@ print_status ""
 print_status "🔧 MANAGEMENT URLS:"
 print_status "   • RabbitMQ Management: http://localhost:15672/ (guest/guest)"
 print_status "   • Elasticsearch: http://localhost:9200/"
-print_status "   • Weaviate: http://localhost:8080/v1/meta"
+print_status "   • Weaviate: http://localhost:8065/v1/meta"
 print_status ""
 print_status "📱 TO VIEW DEMOS:"
 print_status "   1. Open demo/search.html in your browser"
