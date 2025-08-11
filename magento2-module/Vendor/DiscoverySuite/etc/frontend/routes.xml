@@ -16,5 +16,8 @@
         <route id="discoverysuite" frontName="discoverysuite">
             <module name="Vendor_DiscoverySuite"/>
         </route>
+        <route id="discovery" frontName="discovery">
+            <module name="Vendor_DiscoverySuite"/>
+        </route>
     </router>
 </config>

@@ -13,7 +13,7 @@
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
     <default>
-        <discovery_suite>
+        <discovery_suite_config>
             <general>
                 <enabled>1</enabled>
                 <api_base_url>http://ai-product-discovery.softdemonew.info</api_base_url>
@@ -23,7 +23,7 @@
             </general>
             <search>
                 <enabled>1</enabled>
-                <autocomplete_enabled>1</enabled>
+                <autocomplete_enabled>1</autocomplete_enabled>
                 <autocomplete_min_chars>2</autocomplete_min_chars>
                 <autocomplete_max_results>10</autocomplete_max_results>
                 <typo_tolerance>1</typo_tolerance>
@@ -63,6 +63,6 @@
                 <ab_testing_enabled>1</ab_testing_enabled>
                 <data_retention_days>365</data_retention_days>
             </analytics>
-        </discovery_suite>
+        </discovery_suite_config>
     </default>
 </config>

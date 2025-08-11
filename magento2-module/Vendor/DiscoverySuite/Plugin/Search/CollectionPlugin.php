@@ -13,10 +13,10 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Plugin\Search;
 
-use Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection;
 use Vendor\DiscoverySuite\Api\SearchInterface;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
+use Vendor\DiscoverySuite\Helper\Data;
+use Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection;
+use Magento\Framework\App\RequestInterface;
 use Psr\Log\LoggerInterface;
 
 class CollectionPlugin
@@ -27,9 +27,14 @@ class CollectionPlugin
     private $searchService;
 
     /**
-     * @var ScopeConfigInterface
+     * @var Data
      */
-    private $scopeConfig;
+    private $helper;
+
+    /**
+     * @var RequestInterface
+     */
+    private $request;
 
     /**
      * @var LoggerInterface
@@ -37,92 +42,126 @@ class CollectionPlugin
     private $logger;
 
     /**
-     * Configuration paths
-     */
-    const XML_PATH_SEARCH_ENABLED = 'discovery_suite/search/enabled';
-
-    /**
+     * Constructor
+     *
      * @param SearchInterface $searchService
-     * @param ScopeConfigInterface $scopeConfig
+     * @param Data $helper
+     * @param RequestInterface $request
      * @param LoggerInterface $logger
      */
     public function __construct(
         SearchInterface $searchService,
-        ScopeConfigInterface $scopeConfig,
+        Data $helper,
+        RequestInterface $request,
         LoggerInterface $logger
     ) {
         $this->searchService = $searchService;
-        $this->scopeConfig = $scopeConfig;
+        $this->helper = $helper;
+        $this->request = $request;
         $this->logger = $logger;
     }
 
     /**
-     * Intercept search collection and apply AI ranking
+     * Around method for load() to integrate AI search
      *
      * @param Collection $subject
      * @param callable $proceed
-     * @param string $query
+     * @param bool $printQuery
+     * @param bool $logQuery
      * @return Collection
      */
-    public function aroundAddSearchFilter(Collection $subject, callable $proceed, $query)
+    public function aroundLoad(Collection $subject, callable $proceed, $printQuery = false, $logQuery = false)
     {
-        if (!$this->isSearchEnabled()) {
-            return $proceed($query);
+        if (!$this->helper->isSearchEnabled()) {
+            return $proceed($printQuery, $logQuery);
+        }
+
+        // Get search query from request
+        $searchQuery = $this->request->getParam('q');
+        
+        if (!$searchQuery) {
+            return $proceed($printQuery, $logQuery);
         }
 
         try {
-            // Get AI search results
-            $searchResults = $this->searchService->search($query);
-            
-            if (!empty($searchResults['products'])) {
+            // Use AI search service for search results
+            $aiSearchResults = $this->searchService->search(
+                $searchQuery,
+                (int) $subject->getPageSize(),
+                (int) (($subject->getCurPage() - 1) * $subject->getPageSize()),
+                $this->getFiltersFromRequest()
+            );
+
+            if (!empty($aiSearchResults['products'])) {
                 // Extract product IDs from AI results
-                $productIds = array_column($searchResults['products'], 'id');
+                $productIds = array_column($aiSearchResults['products'], 'id');
                 
-                if (!empty($productIds)) {
-                    // Apply AI ranking by filtering and ordering collection
-                    $subject->addFieldToFilter('entity_id', ['in' => $productIds]);
-                    
-                    // Apply custom order based on AI ranking
-                    $this->applyAIRanking($subject, $productIds);
-                    
-                    return $subject;
+                // Apply AI search results to collection
+                $subject->addFieldToFilter('entity_id', ['in' => $productIds]);
+                
+                // Preserve AI ordering
+                if (count($productIds) > 1) {
+                    $orderField = new \Zend_Db_Expr('FIELD(e.entity_id,' . implode(',', $productIds) . ')');
+                    $subject->getSelect()->order($orderField);
                 }
+
+                $this->logger->info('AI search results applied', [
+                    'query' => $searchQuery,
+                    'ai_results_count' => count($productIds)
+                ]);
             }
+
         } catch (\Exception $e) {
-            $this->logger->error('AI search plugin error', [
-                'query' => $query,
+            $this->logger->error('AI search integration failed', [
+                'query' => $searchQuery,
                 'error' => $e->getMessage()
             ]);
+            
+            // Fall back to default Magento search
+            return $proceed($printQuery, $logQuery);
         }
 
-        // Fallback to default Magento search
-        return $proceed($query);
+        return $proceed($printQuery, $logQuery);
     }
 
     /**
-     * Apply AI ranking to the collection
+     * Get filters from current request
      *
-     * @param Collection $collection
-     * @param array $productIds
-     * @return void
+     * @return array
      */
-    private function applyAIRanking(Collection $collection, array $productIds): void
+    private function getFiltersFromRequest(): array
     {
-        // Create ORDER BY FIELD clause to maintain AI ranking order
-        $orderExpression = 'FIELD(e.entity_id, ' . implode(',', $productIds) . ')';
-        $collection->getSelect()->order(new \Zend_Db_Expr($orderExpression));
-    }
+        $filters = [];
+        
+        // Price filter
+        if ($priceFilter = $this->request->getParam('price')) {
+            $priceRange = explode('-', $priceFilter);
+            if (count($priceRange) === 2) {
+                $filters['price'] = [
+                    'min' => (float) $priceRange[0],
+                    'max' => (float) $priceRange[1]
+                ];
+            }
+        }
 
-    /**
-     * Check if AI search is enabled
-     *
-     * @return bool
-     */
-    private function isSearchEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_SEARCH_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        // Category filter
+        if ($categoryId = $this->request->getParam('cat')) {
+            $filters['category_id'] = (int) $categoryId;
+        }
+
+        // Brand/manufacturer filter
+        if ($brand = $this->request->getParam('brand')) {
+            $filters['brand'] = $brand;
+        }
+
+        // Custom attribute filters
+        foreach ($this->request->getParams() as $key => $value) {
+            if (strpos($key, 'attr_') === 0) {
+                $attributeCode = substr($key, 5);
+                $filters['attributes'][$attributeCode] = $value;
+            }
+        }
+
+        return $filters;
     }
 }

@@ -23,9 +23,11 @@ class AnalyticsActions extends Column
     /**
      * @var UrlInterface
      */
-    protected $urlBuilder;
+    private $urlBuilder;
 
     /**
+     * Constructor
+     *
      * @param ContextInterface $context
      * @param UiComponentFactory $uiComponentFactory
      * @param UrlInterface $urlBuilder
@@ -49,7 +51,7 @@ class AnalyticsActions extends Column
      * @param array $dataSource
      * @return array
      */
-    public function prepareDataSource(array $dataSource): array
+    public function prepareDataSource(array $dataSource)
     {
         if (isset($dataSource['data']['items'])) {
             foreach ($dataSource['data']['items'] as &$item) {
@@ -62,7 +64,6 @@ class AnalyticsActions extends Column
                         ),
                         'label' => __('View Details')
                     ];
-                    
                     $item[$name]['export'] = [
                         'href' => $this->urlBuilder->getUrl(
                             'discovery/analytics/export',

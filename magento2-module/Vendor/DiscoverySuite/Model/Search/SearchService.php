@@ -1,6 +1,6 @@
 <?php
 /**
- * DiscoverySuite Search Service Implementation
+ * DiscoverySuite Search Service
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -9,39 +9,24 @@
  * @license     https://opensource.org/licenses/MIT MIT License
  */
 
-declare(strict_types=1);
-
 namespace Vendor\DiscoverySuite\Model\Search;
 
 use Vendor\DiscoverySuite\Api\SearchInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Vendor\DiscoverySuite\Model\Api\HttpClient;
-use Magento\Framework\Exception\LocalizedException;
-use Magento\Store\Model\StoreManagerInterface;
-use Magento\Catalog\Api\ProductRepositoryInterface;
-use Magento\Framework\Api\SearchCriteriaBuilder;
 use Psr\Log\LoggerInterface;
 
 class SearchService implements SearchInterface
 {
     /**
+     * @var Data
+     */
+    private $helper;
+
+    /**
      * @var HttpClient
      */
     private $httpClient;
-
-    /**
-     * @var StoreManagerInterface
-     */
-    private $storeManager;
-
-    /**
-     * @var ProductRepositoryInterface
-     */
-    private $productRepository;
-
-    /**
-     * @var SearchCriteriaBuilder
-     */
-    private $searchCriteriaBuilder;
 
     /**
      * @var LoggerInterface
@@ -49,422 +34,151 @@ class SearchService implements SearchInterface
     private $logger;
 
     /**
+     * Constructor
+     *
+     * @param Data $helper
      * @param HttpClient $httpClient
-     * @param StoreManagerInterface $storeManager
-     * @param ProductRepositoryInterface $productRepository
-     * @param SearchCriteriaBuilder $searchCriteriaBuilder
      * @param LoggerInterface $logger
      */
     public function __construct(
+        Data $helper,
         HttpClient $httpClient,
-        StoreManagerInterface $storeManager,
-        ProductRepositoryInterface $productRepository,
-        SearchCriteriaBuilder $searchCriteriaBuilder,
         LoggerInterface $logger
     ) {
+        $this->helper = $helper;
         $this->httpClient = $httpClient;
-        $this->storeManager = $storeManager;
-        $this->productRepository = $productRepository;
-        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
         $this->logger = $logger;
     }
 
     /**
-     * @inheritDoc
+     * Perform search query
+     *
+     * @param string $query
+     * @param int $limit
+     * @param int $offset
+     * @param array $filters
+     * @return array
      */
-    public function search(
-        string $query,
-        ?int $storeId = null,
-        array $filters = [],
-        int $limit = 20,
-        int $offset = 0
-    ): array {
+    public function search(string $query, int $limit = 20, int $offset = 0, array $filters = []): array
+    {
+        if (!$this->helper->isSearchEnabled()) {
+            return [];
+        }
+
         try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
+            $endpoint = $this->helper->getServiceUrl('search', '/api/v1/search/');
             
-            $params = [
-                'q' => $query,
-                'store_id' => $storeId,
+            $requestData = [
+                'query' => $query,
                 'limit' => $limit,
                 'offset' => $offset,
                 'filters' => $filters
             ];
 
-            $response = $this->httpClient->get('/search', $params);
+            $response = $this->httpClient->post($endpoint, $requestData);
+            
+            return $response ?? [];
 
-            // Track search event
-            $this->trackSearchEvent(
-                $query,
-                $response['total_count'] ?? 0,
-                null,
-                ['store_id' => $storeId, 'filters' => $filters]
+        } catch (\Exception $e) {
+            $this->logger->error(
+                'DiscoverySuite: Search API error',
+                ['error' => $e->getMessage(), 'query' => $query]
             );
-
-            return $response;
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Search API error', [
-                'query' => $query,
-                'error' => $e->getMessage()
-            ]);
-            
-            // Fallback to Magento search if enabled
-            return $this->fallbackSearch($query, $storeId, $filters, $limit, $offset);
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function autocomplete(
-        string $query,
-        ?int $storeId = null,
-        int $limit = 10
-    ): array {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $params = [
-                'q' => $query,
-                'store_id' => $storeId,
-                'limit' => $limit
-            ];
-
-            return $this->httpClient->get('/autocomplete', $params);
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Autocomplete API error', [
-                'query' => $query,
-                'error' => $e->getMessage()
-            ]);
-            
-            // Return empty suggestions on error
-            return [
-                'suggestions' => [],
-                'products' => [],
-                'categories' => []
-            ];
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function getSuggestions(string $query, ?int $storeId = null): array
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $params = [
-                'q' => $query,
-                'store_id' => $storeId
-            ];
-
-            return $this->httpClient->get('/suggestions', $params);
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Suggestions API error', [
-                'query' => $query,
-                'error' => $e->getMessage()
-            ]);
-            
-            return [
-                'spell_correction' => null,
-                'synonyms' => [],
-                'related_queries' => []
-            ];
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function indexProduct(int $productId, ?int $storeId = null): bool
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            // Get product data
-            $product = $this->productRepository->getById($productId, false, $storeId);
-            
-            $productData = [
-                'id' => $product->getId(),
-                'sku' => $product->getSku(),
-                'name' => $product->getName(),
-                'description' => $product->getDescription(),
-                'short_description' => $product->getShortDescription(),
-                'price' => $product->getPrice(),
-                'special_price' => $product->getSpecialPrice(),
-                'status' => $product->getStatus(),
-                'visibility' => $product->getVisibility(),
-                'category_ids' => $product->getCategoryIds(),
-                'attributes' => $this->getProductAttributes($product),
-                'store_id' => $storeId,
-                'updated_at' => date('Y-m-d H:i:s')
-            ];
-
-            $response = $this->httpClient->post('/index/product', $productData);
-            
-            return $response['success'] ?? false;
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Product indexing error', [
-                'product_id' => $productId,
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function bulkIndexProducts(array $productIds, ?int $storeId = null): bool
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $productsData = [];
-            foreach ($productIds as $productId) {
-                try {
-                    $product = $this->productRepository->getById($productId, false, $storeId);
-                    $productsData[] = [
-                        'id' => $product->getId(),
-                        'sku' => $product->getSku(),
-                        'name' => $product->getName(),
-                        'description' => $product->getDescription(),
-                        'short_description' => $product->getShortDescription(),
-                        'price' => $product->getPrice(),
-                        'special_price' => $product->getSpecialPrice(),
-                        'status' => $product->getStatus(),
-                        'visibility' => $product->getVisibility(),
-                        'category_ids' => $product->getCategoryIds(),
-                        'attributes' => $this->getProductAttributes($product),
-                        'store_id' => $storeId,
-                        'updated_at' => date('Y-m-d H:i:s')
-                    ];
-                } catch (\Exception $e) {
-                    $this->logger->warning('Failed to load product for indexing', [
-                        'product_id' => $productId,
-                        'error' => $e->getMessage()
-                    ]);
-                    continue;
-                }
-            }
-
-            if (empty($productsData)) {
-                return false;
-            }
-
-            $response = $this->httpClient->post('/index/products/bulk', [
-                'products' => $productsData
-            ]);
-            
-            return $response['success'] ?? false;
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Bulk product indexing error', [
-                'product_count' => count($productIds),
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function removeFromIndex(int $productId, ?int $storeId = null): bool
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $response = $this->httpClient->delete('/index/product', [
-                'product_id' => $productId,
-                'store_id' => $storeId
-            ]);
-            
-            return $response['success'] ?? false;
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Product removal from index error', [
-                'product_id' => $productId,
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function rebuildIndex(?int $storeId = null): bool
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $response = $this->httpClient->post('/index/rebuild', [
-                'store_id' => $storeId
-            ]);
-            
-            return $response['success'] ?? false;
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Index rebuild error', [
-                'store_id' => $storeId,
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
-    public function getSearchAnalytics(string $period = 'week', ?int $storeId = null): array
-    {
-        try {
-            $storeId = $storeId ?: $this->storeManager->getStore()->getId();
-            
-            $params = [
-                'period' => $period,
-                'store_id' => $storeId
-            ];
-
-            return $this->httpClient->get('/analytics/search', $params);
-
-        } catch (LocalizedException $e) {
-            $this->logger->error('Search analytics error', [
-                'period' => $period,
-                'error' => $e->getMessage()
-            ]);
-            
             return [];
         }
     }
 
     /**
-     * @inheritDoc
+     * Get autocomplete suggestions
+     *
+     * @param string $query
+     * @param int $limit
+     * @return array
      */
-    public function trackSearchEvent(
-        string $query,
-        int $resultCount,
-        ?string $userId = null,
-        array $metadata = []
-    ): bool {
+    public function autocomplete(string $query, int $limit = 10): array
+    {
+        if (!$this->helper->isAutocompleteEnabled()) {
+            return [];
+        }
+
         try {
-            $eventData = [
+            $endpoint = $this->helper->getServiceUrl('search', '/api/v1/autocomplete/');
+            
+            $requestData = [
                 'query' => $query,
-                'result_count' => $resultCount,
-                'user_id' => $userId,
-                'metadata' => $metadata,
-                'timestamp' => date('Y-m-d H:i:s')
+                'limit' => $limit
             ];
 
-            $response = $this->httpClient->post('/analytics/search/event', $eventData);
+            $response = $this->httpClient->post($endpoint, $requestData);
             
-            return $response['success'] ?? false;
+            return $response['suggestions'] ?? [];
 
-        } catch (LocalizedException $e) {
-            $this->logger->error('Search event tracking error', [
-                'query' => $query,
-                'error' => $e->getMessage()
-            ]);
+        } catch (\Exception $e) {
+            $this->logger->error(
+                'DiscoverySuite: Autocomplete API error',
+                ['error' => $e->getMessage(), 'query' => $query]
+            );
+            return [];
+        }
+    }
+
+    /**
+     * Index product data
+     *
+     * @param array $products
+     * @return bool
+     */
+    public function indexProducts(array $products): bool
+    {
+        if (!$this->helper->isEnabled()) {
+            return false;
+        }
+
+        try {
+            $endpoint = $this->helper->getServiceUrl('search', '/api/v1/index/');
             
+            $requestData = [
+                'products' => $products
+            ];
+
+            $response = $this->httpClient->post($endpoint, $requestData);
+            
+            return isset($response['success']) && $response['success'] === true;
+
+        } catch (\Exception $e) {
+            $this->logger->error(
+                'DiscoverySuite: Product indexing error',
+                ['error' => $e->getMessage(), 'product_count' => count($products)]
+            );
             return false;
         }
     }
 
     /**
-     * Fallback to Magento search when AI service is unavailable
+     * Delete product from index
      *
-     * @param string $query
-     * @param int|null $storeId
-     * @param array $filters
-     * @param int $limit
-     * @param int $offset
-     * @return array
+     * @param int $productId
+     * @return bool
      */
-    private function fallbackSearch(
-        string $query,
-        ?int $storeId,
-        array $filters,
-        int $limit,
-        int $offset
-    ): array {
-        // Implement basic Magento search fallback
-        // This is a simplified implementation
-        try {
-            $this->searchCriteriaBuilder
-                ->addFilter('name', '%' . $query . '%', 'like')
-                ->setPageSize($limit)
-                ->setCurrentPage(($offset / $limit) + 1);
-
-            $searchCriteria = $this->searchCriteriaBuilder->create();
-            $searchResults = $this->productRepository->getList($searchCriteria);
-
-            $products = [];
-            foreach ($searchResults->getItems() as $product) {
-                $products[] = [
-                    'id' => $product->getId(),
-                    'sku' => $product->getSku(),
-                    'name' => $product->getName(),
-                    'price' => $product->getPrice(),
-                    'url' => $product->getProductUrl()
-                ];
-            }
-
-            return [
-                'products' => $products,
-                'total_count' => $searchResults->getTotalCount(),
-                'query' => $query,
-                'fallback' => true
-            ];
-
-        } catch (\Exception $e) {
-            $this->logger->error('Fallback search error', [
-                'query' => $query,
-                'error' => $e->getMessage()
-            ]);
-            
-            return [
-                'products' => [],
-                'total_count' => 0,
-                'query' => $query,
-                'error' => 'Search unavailable'
-            ];
-        }
-    }
-
-    /**
-     * Get product attributes for indexing
-     *
-     * @param \Magento\Catalog\Api\Data\ProductInterface $product
-     * @return array
-     */
-    private function getProductAttributes($product): array
+    public function deleteProduct(int $productId): bool
     {
-        $attributes = [];
-        
-        try {
-            $attributeSet = $product->getAttributeSetId();
-            $customAttributes = $product->getCustomAttributes();
-            
-            foreach ($customAttributes as $attribute) {
-                $attributes[$attribute->getAttributeCode()] = $attribute->getValue();
-            }
-            
-        } catch (\Exception $e) {
-            $this->logger->warning('Failed to get product attributes', [
-                'product_id' => $product->getId(),
-                'error' => $e->getMessage()
-            ]);
+        if (!$this->helper->isEnabled()) {
+            return false;
         }
-        
-        return $attributes;
+
+        try {
+            $endpoint = $this->helper->getServiceUrl('search', "/api/v1/index/{$productId}");
+            
+            $response = $this->httpClient->delete($endpoint);
+            
+            return isset($response['success']) && $response['success'] === true;
+
+        } catch (\Exception $e) {
+            $this->logger->error(
+                'DiscoverySuite: Product deletion error',
+                ['error' => $e->getMessage(), 'product_id' => $productId]
+            );
+            return false;
+        }
     }
 }

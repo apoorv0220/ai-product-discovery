@@ -13,25 +13,20 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Block\Analytics;
 
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
-use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Customer\Model\Session as CustomerSession;
+use Magento\Framework\Json\Helper\Data as JsonHelper;
 use Magento\Framework\Registry;
+use Magento\Checkout\Model\Session as CheckoutSession;
 
 class Pixel extends Template
 {
     /**
-     * @var ScopeConfigInterface
+     * @var Data
      */
-    private $scopeConfig;
-
-    /**
-     * @var Json
-     */
-    private $jsonSerializer;
+    private $helper;
 
     /**
      * @var CustomerSession
@@ -39,153 +34,102 @@ class Pixel extends Template
     private $customerSession;
 
     /**
+     * @var JsonHelper
+     */
+    private $jsonHelper;
+
+    /**
      * @var Registry
      */
     private $registry;
 
     /**
-     * Configuration paths
+     * @var CheckoutSession
      */
-    const XML_PATH_ANALYTICS_ENABLED = 'discovery_suite/analytics/enabled';
-    const XML_PATH_TRACK_SEARCHES = 'discovery_suite/analytics/track_searches';
-    const XML_PATH_TRACK_CLICKS = 'discovery_suite/analytics/track_clicks';
-    const XML_PATH_TRACK_PURCHASES = 'discovery_suite/analytics/track_purchases';
-    const XML_PATH_TRACK_PAGE_VIEWS = 'discovery_suite/analytics/track_page_views';
-    const XML_PATH_AB_TESTING_ENABLED = 'discovery_suite/analytics/ab_testing_enabled';
+    private $checkoutSession;
 
     /**
+     * Constructor
+     *
      * @param Context $context
-     * @param ScopeConfigInterface $scopeConfig
-     * @param Json $jsonSerializer
+     * @param Data $helper
      * @param CustomerSession $customerSession
+     * @param JsonHelper $jsonHelper
      * @param Registry $registry
+     * @param CheckoutSession $checkoutSession
      * @param array $data
      */
     public function __construct(
         Context $context,
-        ScopeConfigInterface $scopeConfig,
-        Json $jsonSerializer,
+        Data $helper,
         CustomerSession $customerSession,
+        JsonHelper $jsonHelper,
         Registry $registry,
+        CheckoutSession $checkoutSession,
         array $data = []
     ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->jsonSerializer = $jsonSerializer;
+        $this->helper = $helper;
         $this->customerSession = $customerSession;
+        $this->jsonHelper = $jsonHelper;
         $this->registry = $registry;
+        $this->checkoutSession = $checkoutSession;
         parent::__construct($context, $data);
     }
 
     /**
-     * Check if analytics is enabled
+     * Check if analytics tracking is enabled
      *
      * @return bool
      */
     public function isEnabled(): bool
     {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_ANALYTICS_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        return $this->helper->isAnalyticsEnabled();
     }
 
     /**
-     * Get analytics configuration
-     *
-     * @return string JSON encoded configuration
-     */
-    public function getAnalyticsConfig(): string
-    {
-        $config = [
-            'enabled' => $this->isEnabled(),
-            'trackSearches' => $this->isTrackSearchesEnabled(),
-            'trackClicks' => $this->isTrackClicksEnabled(),
-            'trackPurchases' => $this->isTrackPurchasesEnabled(),
-            'trackPageViews' => $this->isTrackPageViewsEnabled(),
-            'abTestingEnabled' => $this->isABTestingEnabled(),
-            'customerId' => $this->customerSession->getCustomerId(),
-            'storeId' => $this->_storeManager->getStore()->getId(),
-            'sessionId' => $this->_session->getSessionId(),
-            'trackingUrl' => $this->getTrackingUrl(),
-            'pageData' => $this->getPageData()
-        ];
-
-        return $this->jsonSerializer->serialize($config);
-    }
-
-    /**
-     * Check if search tracking is enabled
-     *
-     * @return bool
-     */
-    public function isTrackSearchesEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_TRACK_SEARCHES,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Check if click tracking is enabled
-     *
-     * @return bool
-     */
-    public function isTrackClicksEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_TRACK_CLICKS,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Check if purchase tracking is enabled
-     *
-     * @return bool
-     */
-    public function isTrackPurchasesEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_TRACK_PURCHASES,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Check if page view tracking is enabled
-     *
-     * @return bool
-     */
-    public function isTrackPageViewsEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_TRACK_PAGE_VIEWS,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Check if A/B testing is enabled
-     *
-     * @return bool
-     */
-    public function isABTestingEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_AB_TESTING_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Get tracking URL
+     * Get analytics configuration as JSON
      *
      * @return string
      */
-    public function getTrackingUrl(): string
+    public function getConfigJson(): string
     {
-        return $this->getUrl('discoverysuite/analytics/track');
+        if (!$this->isEnabled()) {
+            return '{}';
+        }
+
+        $config = [
+            'enabled' => true,
+            'userId' => $this->getUserId(),
+            'trackingEndpoint' => $this->getUrl('discovery/analytics/track'),
+            'pageData' => $this->getPageData(),
+            'sessionData' => $this->getSessionData(),
+            'autoTrack' => [
+                'pageView' => true,
+                'productView' => true,
+                'categoryView' => true,
+                'searchQuery' => true,
+                'addToCart' => true,
+                'removeFromCart' => true,
+                'checkout' => true,
+                'purchase' => true
+            ]
+        ];
+
+        return $this->jsonHelper->jsonEncode($config);
+    }
+
+    /**
+     * Get user ID for analytics
+     *
+     * @return string
+     */
+    private function getUserId(): string
+    {
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
+
+        return 'guest_' . $this->customerSession->getSessionId();
     }
 
     /**
@@ -193,94 +137,108 @@ class Pixel extends Template
      *
      * @return array
      */
-    public function getPageData(): array
+    private function getPageData(): array
     {
-        $request = $this->getRequest();
-        $fullActionName = $request->getFullActionName();
-        
         $pageData = [
-            'page_type' => $this->getPageType($fullActionName),
-            'page_url' => $request->getUriString(),
-            'page_title' => $this->getPageTitle(),
-            'full_action_name' => $fullActionName,
-            'route_name' => $request->getRouteName(),
-            'controller_name' => $request->getControllerName(),
-            'action_name' => $request->getActionName()
+            'type' => $this->getPageType(),
+            'url' => $this->getRequest()->getUriString(),
+            'referrer' => $this->getRequest()->getServer('HTTP_REFERER'),
+            'title' => $this->pageConfig->getTitle()->get()
         ];
 
-        // Add context-specific data
-        switch ($pageData['page_type']) {
-            case 'product':
-                $product = $this->registry->registry('current_product');
-                if ($product) {
-                    $pageData['product_id'] = $product->getId();
-                    $pageData['product_sku'] = $product->getSku();
-                    $pageData['product_name'] = $product->getName();
-                    $pageData['product_price'] = $product->getPrice();
-                    $pageData['category_ids'] = $product->getCategoryIds();
-                }
-                break;
-                
-            case 'category':
-                $category = $this->registry->registry('current_category');
-                if ($category) {
-                    $pageData['category_id'] = $category->getId();
-                    $pageData['category_name'] = $category->getName();
-                    $pageData['category_path'] = $category->getPath();
-                }
-                break;
-                
-            case 'search':
-                $pageData['search_query'] = $request->getParam('q', '');
-                break;
+        // Add product-specific data
+        $currentProduct = $this->registry->registry('current_product');
+        if ($currentProduct) {
+            $pageData['product'] = [
+                'id' => $currentProduct->getId(),
+                'sku' => $currentProduct->getSku(),
+                'name' => $currentProduct->getName(),
+                'price' => $currentProduct->getPrice(),
+                'category_ids' => $currentProduct->getCategoryIds()
+            ];
+        }
+
+        // Add category-specific data
+        $currentCategory = $this->registry->registry('current_category');
+        if ($currentCategory) {
+            $pageData['category'] = [
+                'id' => $currentCategory->getId(),
+                'name' => $currentCategory->getName(),
+                'path' => $currentCategory->getPath()
+            ];
         }
 
         return $pageData;
     }
 
     /**
-     * Get page type from full action name
-     *
-     * @param string $fullActionName
-     * @return string
-     */
-    private function getPageType(string $fullActionName): string
-    {
-        $pageTypeMap = [
-            'cms_index_index' => 'homepage',
-            'catalog_product_view' => 'product',
-            'catalog_category_view' => 'category',
-            'catalogsearch_result_index' => 'search',
-            'checkout_cart_index' => 'cart',
-            'checkout_index_index' => 'checkout',
-            'checkout_onepage_success' => 'success',
-            'customer_account_index' => 'account',
-            'customer_account_login' => 'login',
-            'customer_account_create' => 'register'
-        ];
-
-        return $pageTypeMap[$fullActionName] ?? 'other';
-    }
-
-    /**
-     * Get page title
-     *
-     * @return string
-     */
-    private function getPageTitle(): string
-    {
-        return $this->pageConfig->getTitle()->get() ?: '';
-    }
-
-    /**
-     * Get A/B test variants for current page
+     * Get session data
      *
      * @return array
      */
-    public function getABTestVariants(): array
+    private function getSessionData(): array
     {
-        // This would typically fetch active A/B tests from the service
-        // For now, return empty array
-        return [];
+        $sessionData = [
+            'store_id' => $this->_storeManager->getStore()->getId(),
+            'currency' => $this->_storeManager->getStore()->getCurrentCurrency()->getCode(),
+            'locale' => $this->_localeResolver->getLocale(),
+            'is_logged_in' => $this->customerSession->isLoggedIn()
+        ];
+
+        // Add cart data if available
+        try {
+            $quote = $this->checkoutSession->getQuote();
+            if ($quote && $quote->getItemsCount() > 0) {
+                $sessionData['cart'] = [
+                    'item_count' => $quote->getItemsCount(),
+                    'subtotal' => $quote->getSubtotal(),
+                    'items' => []
+                ];
+
+                foreach ($quote->getAllVisibleItems() as $item) {
+                    $sessionData['cart']['items'][] = [
+                        'product_id' => $item->getProductId(),
+                        'sku' => $item->getSku(),
+                        'name' => $item->getName(),
+                        'qty' => $item->getQty(),
+                        'price' => $item->getPrice()
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            // Ignore cart data if not available
+        }
+
+        return $sessionData;
+    }
+
+    /**
+     * Determine page type
+     *
+     * @return string
+     */
+    private function getPageType(): string
+    {
+        $fullActionName = $this->getRequest()->getFullActionName();
+
+        switch ($fullActionName) {
+            case 'cms_index_index':
+                return 'homepage';
+            case 'catalog_product_view':
+                return 'product';
+            case 'catalog_category_view':
+                return 'category';
+            case 'catalogsearch_result_index':
+                return 'search';
+            case 'checkout_cart_index':
+                return 'cart';
+            case 'checkout_index_index':
+            case 'checkout_onepage_index':
+                return 'checkout';
+            case 'checkout_onepage_success':
+                return 'purchase_success';
+            default:
+                return 'other';
+        }
     }
 }

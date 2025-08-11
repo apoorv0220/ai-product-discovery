@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Default Layout
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="Vendor_DiscoverySuite::css/discovery-suite.css"/>
+        <script src="Vendor_DiscoverySuite::js/discovery-suite.js"/>
+    </head>
+    <body>
+        <!-- Search Autocomplete -->
+        <referenceBlock name="top.search">
+            <block class="Vendor\DiscoverySuite\Block\Search\Autocomplete" 
+                   name="discovery.search.autocomplete" 
+                   template="Vendor_DiscoverySuite::search/autocomplete.phtml"/>
+        </referenceBlock>
+        
+        <!-- Analytics Tracking (Global) -->
+        <referenceContainer name="before.body.end">
+            <block class="Vendor\DiscoverySuite\Block\Analytics\Pixel" 
+                   name="discovery.analytics.pixel.global" 
+                   template="Vendor_DiscoverySuite::analytics/pixel.phtml"/>
+        </referenceContainer>
+        
+        <!-- Shopping Assistant Widget (Global) -->
+        <referenceContainer name="before.body.end">
+            <block class="Vendor\DiscoverySuite\Block\Assistant\Widget" 
+                   name="discovery.assistant.widget.global" 
+                   template="Vendor_DiscoverySuite::assistant/widget.phtml">
+                <arguments>
+                    <argument name="position" xsi:type="string">bottom-right</argument>
+                    <argument name="minimized" xsi:type="boolean">true</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

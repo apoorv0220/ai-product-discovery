@@ -13,46 +13,48 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Block\Search;
 
+use Vendor\DiscoverySuite\Api\SearchInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
-use Magento\Framework\Serialize\Serializer\Json;
+use Magento\Framework\Json\Helper\Data as JsonHelper;
 
 class Autocomplete extends Template
 {
     /**
-     * @var ScopeConfigInterface
+     * @var SearchInterface
      */
-    private $scopeConfig;
+    private $searchService;
 
     /**
-     * @var Json
+     * @var Data
      */
-    private $jsonSerializer;
+    private $helper;
 
     /**
-     * Configuration paths
+     * @var JsonHelper
      */
-    const XML_PATH_SEARCH_ENABLED = 'discovery_suite/search/enabled';
-    const XML_PATH_AUTOCOMPLETE_ENABLED = 'discovery_suite/search/autocomplete_enabled';
-    const XML_PATH_AUTOCOMPLETE_MIN_CHARS = 'discovery_suite/search/autocomplete_min_chars';
-    const XML_PATH_AUTOCOMPLETE_MAX_RESULTS = 'discovery_suite/search/autocomplete_max_results';
+    private $jsonHelper;
 
     /**
+     * Constructor
+     *
      * @param Context $context
-     * @param ScopeConfigInterface $scopeConfig
-     * @param Json $jsonSerializer
+     * @param SearchInterface $searchService
+     * @param Data $helper
+     * @param JsonHelper $jsonHelper
      * @param array $data
      */
     public function __construct(
         Context $context,
-        ScopeConfigInterface $scopeConfig,
-        Json $jsonSerializer,
+        SearchInterface $searchService,
+        Data $helper,
+        JsonHelper $jsonHelper,
         array $data = []
     ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->jsonSerializer = $jsonSerializer;
+        $this->searchService = $searchService;
+        $this->helper = $helper;
+        $this->jsonHelper = $jsonHelper;
         parent::__construct($context, $data);
     }
 
@@ -63,99 +65,65 @@ class Autocomplete extends Template
      */
     public function isEnabled(): bool
     {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_SEARCH_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        ) && $this->scopeConfig->isSetFlag(
-            self::XML_PATH_AUTOCOMPLETE_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        return $this->helper->isAutocompleteEnabled();
     }
 
     /**
-     * Get autocomplete configuration
+     * Get autocomplete configuration as JSON
      *
-     * @return string JSON encoded configuration
+     * @return string
      */
-    public function getAutocompleteConfig(): string
+    public function getConfigJson(): string
     {
         $config = [
             'enabled' => $this->isEnabled(),
-            'minChars' => $this->getMinChars(),
-            'maxResults' => $this->getMaxResults(),
-            'url' => $this->getAutocompleteUrl(),
-            'delay' => 300, // 300ms delay
-            'showProducts' => true,
-            'showCategories' => true,
-            'showSuggestions' => true
+            'minSearchLength' => 2,
+            'delay' => 300,
+            'maxSuggestions' => 10,
+            'endpoint' => $this->getUrl('discovery/search/autocomplete'),
+            'showImages' => true,
+            'showPrices' => true,
+            'showCategories' => true
         ];
 
-        return $this->jsonSerializer->serialize($config);
+        return $this->jsonHelper->jsonEncode($config);
     }
 
     /**
-     * Get minimum characters for autocomplete
+     * Get autocomplete suggestions for query
      *
-     * @return int
+     * @param string $query
+     * @param int $limit
+     * @return array
      */
-    public function getMinChars(): int
+    public function getSuggestions(string $query, int $limit = 10): array
     {
-        return (int) $this->scopeConfig->getValue(
-            self::XML_PATH_AUTOCOMPLETE_MIN_CHARS,
-            ScopeInterface::SCOPE_STORE
-        ) ?: 2;
+        if (!$this->isEnabled()) {
+            return [];
+        }
+
+        try {
+            return $this->searchService->autocomplete($query, $limit);
+        } catch (\Exception $e) {
+            $this->_logger->error('Autocomplete suggestions failed', [
+                'query' => $query,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
     }
 
     /**
-     * Get maximum autocomplete results
+     * Get cache key info
      *
-     * @return int
+     * @return array
      */
-    public function getMaxResults(): int
+    public function getCacheKeyInfo()
     {
-        return (int) $this->scopeConfig->getValue(
-            self::XML_PATH_AUTOCOMPLETE_MAX_RESULTS,
-            ScopeInterface::SCOPE_STORE
-        ) ?: 10;
-    }
-
-    /**
-     * Get autocomplete AJAX URL
-     *
-     * @return string
-     */
-    public function getAutocompleteUrl(): string
-    {
-        return $this->getUrl('discoverysuite/search/autocomplete');
-    }
-
-    /**
-     * Get search URL
-     *
-     * @return string
-     */
-    public function getSearchUrl(): string
-    {
-        return $this->getUrl('catalogsearch/result');
-    }
-
-    /**
-     * Get current search query
-     *
-     * @return string
-     */
-    public function getCurrentQuery(): string
-    {
-        return $this->_request->getParam('q', '');
-    }
-
-    /**
-     * Get search input placeholder
-     *
-     * @return string
-     */
-    public function getSearchPlaceholder(): string
-    {
-        return __('Search products with AI assistance...');
+        return [
+            'DISCOVERY_AUTOCOMPLETE',
+            $this->_storeManager->getStore()->getId(),
+            $this->getTemplateFile()
+        ];
     }
 }

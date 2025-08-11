@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Admin System Config Layout
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="Vendor_DiscoverySuite::css/admin-config.css"/>
+        <script src="Vendor_DiscoverySuite::js/admin-config.js"/>
+    </head>
+    <body>
+        <referenceBlock name="system_config_tabs">
+            <action method="addTab">
+                <argument name="name" xsi:type="string">discovery_suite</argument>
+                <argument name="title" xsi:type="string">AI Discovery Suite</argument>
+            </action>
+        </referenceBlock>
+    </body>
+</page>

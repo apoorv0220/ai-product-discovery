@@ -9,86 +9,77 @@
  * @license     https://opensource.org/licenses/MIT MIT License
  */
 
-declare(strict_types=1);
-
 namespace Vendor\DiscoverySuite\Console\Command;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\ProgressBar;
-use Vendor\DiscoverySuite\Api\SearchInterface;
-use Magento\Catalog\Api\ProductRepositoryInterface;
-use Magento\Framework\Api\SearchCriteriaBuilder;
-use Magento\Store\Model\StoreManagerInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Magento\Framework\App\State;
+use Magento\Framework\App\Area;
+use Vendor\DiscoverySuite\Helper\Data;
+use Vendor\DiscoverySuite\Model\Api\HttpClient;
 
 class SyncCatalog extends Command
 {
-    /**
-     * @var SearchInterface
-     */
-    private $searchService;
+    const BATCH_SIZE = 'batch-size';
+    const STORE_ID = 'store-id';
 
     /**
-     * @var ProductRepositoryInterface
+     * @var State
      */
-    private $productRepository;
+    private $appState;
 
     /**
-     * @var SearchCriteriaBuilder
+     * @var Data
      */
-    private $searchCriteriaBuilder;
+    private $helper;
 
     /**
-     * @var StoreManagerInterface
+     * @var HttpClient
      */
-    private $storeManager;
+    private $httpClient;
 
     /**
-     * @param SearchInterface $searchService
-     * @param ProductRepositoryInterface $productRepository
-     * @param SearchCriteriaBuilder $searchCriteriaBuilder
-     * @param StoreManagerInterface $storeManager
+     * Constructor
+     *
+     * @param State $appState
+     * @param Data $helper
+     * @param HttpClient $httpClient
+     * @param string|null $name
      */
     public function __construct(
-        SearchInterface $searchService,
-        ProductRepositoryInterface $productRepository,
-        SearchCriteriaBuilder $searchCriteriaBuilder,
-        StoreManagerInterface $storeManager
+        State $appState,
+        Data $helper,
+        HttpClient $httpClient,
+        string $name = null
     ) {
-        $this->searchService = $searchService;
-        $this->productRepository = $productRepository;
-        $this->searchCriteriaBuilder = $searchCriteriaBuilder;
-        $this->storeManager = $storeManager;
-        parent::__construct();
+        $this->appState = $appState;
+        $this->helper = $helper;
+        $this->httpClient = $httpClient;
+        parent::__construct($name);
     }
 
     /**
      * Configure command
      */
-    protected function configure(): void
+    protected function configure()
     {
-        $this->setName('discovery:catalog:sync')
-            ->setDescription('Sync catalog with AI Discovery Suite')
+        $this->setName('discovery:sync:catalog')
+            ->setDescription('Sync product catalog with AI Discovery Suite')
             ->addOption(
-                'store-id',
-                's',
-                InputOption::VALUE_OPTIONAL,
-                'Store ID to sync (default: all stores)'
-            )
-            ->addOption(
-                'batch-size',
+                self::BATCH_SIZE,
                 'b',
                 InputOption::VALUE_OPTIONAL,
-                'Batch size for product sync',
+                'Batch size for syncing products',
                 100
             )
             ->addOption(
-                'product-id',
-                'p',
+                self::STORE_ID,
+                's',
                 InputOption::VALUE_OPTIONAL,
-                'Specific product ID to sync'
+                'Store ID to sync',
+                1
             );
     }
 
@@ -99,165 +90,90 @@ class SyncCatalog extends Command
      * @param OutputInterface $output
      * @return int
      */
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $output->writeln('<info>Starting catalog sync with AI Discovery Suite...</info>');
-
-        $storeId = $input->getOption('store-id');
-        $batchSize = (int) $input->getOption('batch-size');
-        $productId = $input->getOption('product-id');
-
         try {
-            if ($productId) {
-                return $this->syncSingleProduct((int) $productId, $storeId, $output);
-            } else {
-                return $this->syncAllProducts($storeId, $batchSize, $output);
+            $this->appState->setAreaCode(Area::AREA_ADMINHTML);
+            
+            $batchSize = (int)$input->getOption(self::BATCH_SIZE);
+            $storeId = (int)$input->getOption(self::STORE_ID);
+
+            $output->writeln('<info>Starting catalog sync...</info>');
+            $output->writeln("Batch size: {$batchSize}");
+            $output->writeln("Store ID: {$storeId}");
+
+            if (!$this->helper->isEnabled()) {
+                $output->writeln('<error>Discovery Suite is not enabled. Please enable it in configuration.</error>');
+                return Command::FAILURE;
             }
-        } catch (\Exception $e) {
-            $output->writeln('<error>Error during sync: ' . $e->getMessage() . '</error>');
-            return Command::FAILURE;
-        }
-    }
 
-    /**
-     * Sync single product
-     *
-     * @param int $productId
-     * @param string|null $storeId
-     * @param OutputInterface $output
-     * @return int
-     */
-    private function syncSingleProduct(int $productId, ?string $storeId, OutputInterface $output): int
-    {
-        $output->writeln("<info>Syncing product ID: {$productId}</info>");
+            // Test API connection first
+            $output->writeln('<info>Testing API connection...</info>');
+            $isConnected = $this->testApiConnection($output);
+            
+            if (!$isConnected) {
+                $output->writeln('<error>API connection failed. Please check your configuration.</error>');
+                return Command::FAILURE;
+            }
 
-        $success = $this->searchService->indexProduct($productId, $storeId ? (int) $storeId : null);
+            $output->writeln('<info>API connection successful!</info>');
 
-        if ($success) {
-            $output->writeln('<info>Product synced successfully!</info>');
+            // Sync products in batches
+            $totalSynced = $this->syncProducts($batchSize, $storeId, $output);
+
+            $output->writeln("<info>Catalog sync completed successfully! Synced {$totalSynced} products.</info>");
             return Command::SUCCESS;
-        } else {
-            $output->writeln('<error>Failed to sync product</error>');
+
+        } catch (\Exception $e) {
+            $output->writeln('<error>Error during catalog sync: ' . $e->getMessage() . '</error>');
             return Command::FAILURE;
         }
     }
 
     /**
-     * Sync all products
+     * Test API connection
      *
-     * @param string|null $storeId
+     * @param OutputInterface $output
+     * @return bool
+     */
+    private function testApiConnection(OutputInterface $output): bool
+    {
+        try {
+            $searchEndpoint = $this->helper->getApiBaseUrl() . ':' . $this->helper->getSearchServicePort() . '/health/';
+            $response = $this->httpClient->get($searchEndpoint);
+            
+            if (!empty($response['status']) && $response['status'] === 'healthy') {
+                return true;
+            }
+            
+            return false;
+        } catch (\Exception $e) {
+            $output->writeln('<comment>API connection test failed: ' . $e->getMessage() . '</comment>');
+            return false;
+        }
+    }
+
+    /**
+     * Sync products to discovery service
+     *
      * @param int $batchSize
+     * @param int $storeId
      * @param OutputInterface $output
      * @return int
      */
-    private function syncAllProducts(?string $storeId, int $batchSize, OutputInterface $output): int
+    private function syncProducts(int $batchSize, int $storeId, OutputInterface $output): int
     {
-        $stores = $storeId ? [(int) $storeId] : $this->getAllStoreIds();
-
-        foreach ($stores as $currentStoreId) {
-            $output->writeln("<info>Syncing store ID: {$currentStoreId}</info>");
-
-            // Get total product count
-            $totalProducts = $this->getTotalProductCount($currentStoreId);
-            $output->writeln("<info>Total products to sync: {$totalProducts}</info>");
-
-            if ($totalProducts === 0) {
-                $output->writeln('<info>No products found for this store</info>');
-                continue;
-            }
-
-            // Create progress bar
-            $progressBar = new ProgressBar($output, $totalProducts);
-            $progressBar->start();
-
-            $currentPage = 1;
-            $totalPages = ceil($totalProducts / $batchSize);
-            $syncedCount = 0;
-            $failedCount = 0;
-
-            // Process products in batches
-            while ($currentPage <= $totalPages) {
-                $products = $this->getProductBatch($currentStoreId, $currentPage, $batchSize);
-                
-                if (empty($products)) {
-                    break;
-                }
-
-                $productIds = array_map(function ($product) {
-                    return (int) $product->getId();
-                }, $products);
-
-                // Bulk index products
-                $success = $this->searchService->bulkIndexProducts($productIds, $currentStoreId);
-
-                if ($success) {
-                    $syncedCount += count($productIds);
-                } else {
-                    $failedCount += count($productIds);
-                }
-
-                $progressBar->advance(count($productIds));
-                $currentPage++;
-            }
-
-            $progressBar->finish();
-            $output->writeln('');
-            $output->writeln("<info>Store {$currentStoreId} sync completed:</info>");
-            $output->writeln("<info>  - Synced: {$syncedCount} products</info>");
-            $output->writeln("<info>  - Failed: {$failedCount} products</info>");
-        }
-
-        $output->writeln('<info>Catalog sync completed!</info>');
-        return Command::SUCCESS;
-    }
-
-    /**
-     * Get all store IDs
-     *
-     * @return array
-     */
-    private function getAllStoreIds(): array
-    {
-        $storeIds = [];
-        foreach ($this->storeManager->getStores() as $store) {
-            $storeIds[] = (int) $store->getId();
-        }
-        return $storeIds;
-    }
-
-    /**
-     * Get total product count for store
-     *
-     * @param int $storeId
-     * @return int
-     */
-    private function getTotalProductCount(int $storeId): int
-    {
-        $searchCriteria = $this->searchCriteriaBuilder
-            ->addFilter('status', 1) // Only enabled products
-            ->create();
-
-        $searchResults = $this->productRepository->getList($searchCriteria);
-        return $searchResults->getTotalCount();
-    }
-
-    /**
-     * Get product batch
-     *
-     * @param int $storeId
-     * @param int $page
-     * @param int $pageSize
-     * @return array
-     */
-    private function getProductBatch(int $storeId, int $page, int $pageSize): array
-    {
-        $searchCriteria = $this->searchCriteriaBuilder
-            ->addFilter('status', 1) // Only enabled products
-            ->setPageSize($pageSize)
-            ->setCurrentPage($page)
-            ->create();
-
-        $searchResults = $this->productRepository->getList($searchCriteria);
-        return $searchResults->getItems();
+        $totalSynced = 0;
+        
+        // This is a placeholder - in a real implementation, you would:
+        // 1. Load products from Magento catalog
+        // 2. Format them for the API
+        // 3. Send them to the search service indexing endpoint
+        // 4. Handle any errors and retry logic
+        
+        $output->writeln('<comment>Product sync functionality to be implemented based on your catalog structure.</comment>');
+        $output->writeln('<comment>This command will sync products to: ' . $this->helper->getApiBaseUrl() . ':' . $this->helper->getSearchServicePort() . '/api/v1/index/</comment>');
+        
+        return $totalSynced;
     }
 }

@@ -114,10 +114,8 @@ class HttpClient
             $baseUrl = 'http://localhost';
         }
 
-        // Add service-specific path and port
-        if ($this->baseUri) {
-            $baseUrl = rtrim($baseUrl, '/') . ':' . $this->defaultPort;
-        }
+        // Add service-specific port
+        $baseUrl = rtrim($baseUrl, '/') . ':' . $this->defaultPort;
 
         return $baseUrl;
     }

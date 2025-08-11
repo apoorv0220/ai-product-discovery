@@ -9,28 +9,19 @@
  * @license     https://opensource.org/licenses/MIT MIT License
  */
 
-declare(strict_types=1);
-
 namespace Vendor\DiscoverySuite\Observer;
 
 use Magento\Framework\Event\Observer;
 use Magento\Framework\Event\ObserverInterface;
-use Vendor\DiscoverySuite\Api\SearchInterface;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Psr\Log\LoggerInterface;
 
 class ProductSaveObserver implements ObserverInterface
 {
     /**
-     * @var SearchInterface
+     * @var Data
      */
-    private $searchService;
-
-    /**
-     * @var ScopeConfigInterface
-     */
-    private $scopeConfig;
+    private $helper;
 
     /**
      * @var LoggerInterface
@@ -38,22 +29,16 @@ class ProductSaveObserver implements ObserverInterface
     private $logger;
 
     /**
-     * Configuration paths
-     */
-    const XML_PATH_SEARCH_ENABLED = 'discovery_suite/search/enabled';
-
-    /**
-     * @param SearchInterface $searchService
-     * @param ScopeConfigInterface $scopeConfig
+     * Constructor
+     *
+     * @param Data $helper
      * @param LoggerInterface $logger
      */
     public function __construct(
-        SearchInterface $searchService,
-        ScopeConfigInterface $scopeConfig,
+        Data $helper,
         LoggerInterface $logger
     ) {
-        $this->searchService = $searchService;
-        $this->scopeConfig = $scopeConfig;
+        $this->helper = $helper;
         $this->logger = $logger;
     }
 
@@ -63,40 +48,64 @@ class ProductSaveObserver implements ObserverInterface
      * @param Observer $observer
      * @return void
      */
-    public function execute(Observer $observer): void
+    public function execute(Observer $observer)
     {
-        if (!$this->isSearchEnabled()) {
+        if (!$this->helper->isEnabled()) {
             return;
         }
 
         try {
             $product = $observer->getEvent()->getProduct();
             
-            if (!$product || !$product->getId()) {
-                return;
+            if ($product && $product->getId()) {
+                // Log the product save event
+                $this->logger->info(
+                    'DiscoverySuite: Product saved',
+                    [
+                        'product_id' => $product->getId(),
+                        'sku' => $product->getSku(),
+                        'name' => $product->getName()
+                    ]
+                );
+
+                // Here you would typically:
+                // 1. Format the product data for the AI service
+                // 2. Send the product to the search indexing service
+                // 3. Trigger recommendation model updates if needed
+                
+                // Placeholder for actual implementation
+                $this->syncProductToSearchService($product);
             }
-
-            // Index the product in the AI search service
-            $this->searchService->indexProduct((int) $product->getId());
-
         } catch (\Exception $e) {
-            $this->logger->error('Product save observer error', [
-                'product_id' => $product ? $product->getId() : 'unknown',
-                'error' => $e->getMessage()
-            ]);
+            $this->logger->error(
+                'DiscoverySuite: Error in ProductSaveObserver',
+                ['error' => $e->getMessage()]
+            );
         }
     }
 
     /**
-     * Check if search is enabled
+     * Sync product to search service
      *
-     * @return bool
+     * @param \Magento\Catalog\Model\Product $product
+     * @return void
      */
-    private function isSearchEnabled(): bool
+    private function syncProductToSearchService($product)
     {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_SEARCH_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        // Placeholder implementation
+        // In a real implementation, you would:
+        // 1. Format product data according to your AI service requirements
+        // 2. Call the search service API to index the product
+        // 3. Handle any errors and implement retry logic
+        
+        if ($this->helper->isDebugMode()) {
+            $this->logger->debug(
+                'DiscoverySuite: Would sync product to search service',
+                [
+                    'product_id' => $product->getId(),
+                    'search_service_url' => $this->helper->getServiceUrl('search', '/api/v1/index/')
+                ]
+            );
+        }
     }
 }

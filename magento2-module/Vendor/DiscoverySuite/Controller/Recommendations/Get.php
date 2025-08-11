@@ -1,6 +1,6 @@
 <?php
 /**
- * DiscoverySuite Recommendations Get Controller
+ * DiscoverySuite Get Recommendations Controller
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -13,15 +13,28 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Controller\Recommendations;
 
+use Vendor\DiscoverySuite\Api\RecommendationInterface;
+use Vendor\DiscoverySuite\Helper\Data;
+use Magento\Framework\App\Action\HttpGetActionInterface;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\ResultInterface;
-use Vendor\DiscoverySuite\Api\RecommendationInterface;
+use Magento\Customer\Model\Session as CustomerSession;
 use Psr\Log\LoggerInterface;
 
-class Get implements HttpPostActionInterface
+class Get implements HttpGetActionInterface, HttpPostActionInterface
 {
+    /**
+     * @var RecommendationInterface
+     */
+    private $recommendationService;
+
+    /**
+     * @var Data
+     */
+    private $helper;
+
     /**
      * @var RequestInterface
      */
@@ -30,12 +43,12 @@ class Get implements HttpPostActionInterface
     /**
      * @var JsonFactory
      */
-    private $jsonFactory;
+    private $resultJsonFactory;
 
     /**
-     * @var RecommendationInterface
+     * @var CustomerSession
      */
-    private $recommendationService;
+    private $customerSession;
 
     /**
      * @var LoggerInterface
@@ -43,135 +56,129 @@ class Get implements HttpPostActionInterface
     private $logger;
 
     /**
-     * @param RequestInterface $request
-     * @param JsonFactory $jsonFactory
+     * Constructor
+     *
      * @param RecommendationInterface $recommendationService
+     * @param Data $helper
+     * @param RequestInterface $request
+     * @param JsonFactory $resultJsonFactory
+     * @param CustomerSession $customerSession
      * @param LoggerInterface $logger
      */
     public function __construct(
-        RequestInterface $request,
-        JsonFactory $jsonFactory,
         RecommendationInterface $recommendationService,
+        Data $helper,
+        RequestInterface $request,
+        JsonFactory $resultJsonFactory,
+        CustomerSession $customerSession,
         LoggerInterface $logger
     ) {
-        $this->request = $request;
-        $this->jsonFactory = $jsonFactory;
         $this->recommendationService = $recommendationService;
+        $this->helper = $helper;
+        $this->request = $request;
+        $this->resultJsonFactory = $resultJsonFactory;
+        $this->customerSession = $customerSession;
         $this->logger = $logger;
     }
 
     /**
-     * Execute recommendations request
+     * Execute get recommendations action
      *
      * @return ResultInterface
      */
     public function execute(): ResultInterface
     {
-        $result = $this->jsonFactory->create();
+        $result = $this->resultJsonFactory->create();
+
+        if (!$this->helper->isRecommendationsEnabled()) {
+            return $result->setData([
+                'success' => false,
+                'message' => 'Recommendations are disabled',
+                'recommendations' => []
+            ]);
+        }
 
         try {
-            $context = $this->request->getParam('context', 'homepage');
-            $storeId = (int) $this->request->getParam('store_id');
-            $customerId = $this->request->getParam('customer_id') ? (int) $this->request->getParam('customer_id') : null;
+            $context = (string) $this->request->getParam('context', 'homepage');
             $limit = (int) $this->request->getParam('limit', 12);
-            $productId = $this->request->getParam('product_id') ? (int) $this->request->getParam('product_id') : null;
+            $productId = $this->request->getParam('product_id');
+            
+            $userId = $this->getUserId();
 
-            // Build parameters based on context
-            $params = [];
             if ($productId) {
-                $params['product_id'] = $productId;
+                // Get similar products
+                $recommendations = $this->recommendationService->getSimilarProducts(
+                    (int) $productId,
+                    $limit
+                );
+            } else {
+                // Get personalized recommendations
+                $filters = $this->getFiltersFromRequest();
+                $recommendations = $this->recommendationService->getRecommendations(
+                    $userId,
+                    $context,
+                    $limit,
+                    $filters
+                );
             }
 
-            // Get recommendations
-            $recommendations = $this->recommendationService->getRecommendations(
-                $context,
-                $params,
-                $customerId,
-                $storeId,
-                $limit
-            );
-
-            // Format response
-            $response = [
+            return $result->setData([
                 'success' => true,
-                'products' => $this->formatProducts($recommendations['products'] ?? []),
-                'total_count' => $recommendations['total_count'] ?? 0,
-                'recommendation_id' => $recommendations['recommendation_id'] ?? null,
                 'context' => $context,
-                'has_more' => ($recommendations['total_count'] ?? 0) > $limit
-            ];
-
-            return $result->setData($response);
+                'user_id' => $userId,
+                'recommendations' => $recommendations
+            ]);
 
         } catch (\Exception $e) {
-            $this->logger->error('Recommendations controller error', [
-                'context' => $this->request->getParam('context'),
+            $this->logger->error('Get recommendations request failed', [
+                'context' => $this->request->getParam('context', ''),
+                'user_id' => $this->getUserId(),
                 'error' => $e->getMessage()
             ]);
 
             return $result->setData([
                 'success' => false,
-                'error' => 'Unable to load recommendations',
-                'products' => []
+                'message' => 'Recommendations request failed',
+                'recommendations' => []
             ]);
         }
     }
 
     /**
-     * Format products for frontend display
+     * Get user ID
      *
-     * @param array $products
-     * @return array
-     */
-    private function formatProducts(array $products): array
-    {
-        $formatted = [];
-
-        foreach ($products as $product) {
-            $formatted[] = [
-                'id' => $product['id'] ?? 0,
-                'name' => $product['name'] ?? '',
-                'url' => $this->getProductUrl($product),
-                'image' => $product['image_url'] ?? null,
-                'price' => $product['price'] ?? 0,
-                'special_price' => $product['special_price'] ?? null,
-                'formatted_price' => $this->formatPrice($product['price'] ?? 0),
-                'formatted_special_price' => $this->formatPrice($product['special_price'] ?? null),
-                'rating' => $product['avg_rating'] ?? 0,
-                'review_count' => $product['review_count'] ?? 0,
-                'is_saleable' => $product['is_in_stock'] ?? true,
-                'sku' => $product['sku'] ?? ''
-            ];
-        }
-
-        return $formatted;
-    }
-
-    /**
-     * Get product URL
-     *
-     * @param array $product
      * @return string
      */
-    private function getProductUrl(array $product): string
+    private function getUserId(): string
     {
-        // This would typically use Magento's URL builder
-        $urlKey = $product['url_key'] ?? '';
-        return $urlKey ? "/{$urlKey}.html" : "#";
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
+
+        return 'guest_' . $this->customerSession->getSessionId();
     }
 
     /**
-     * Format price for display
+     * Get filters from request
      *
-     * @param float|null $price
-     * @return string|null
+     * @return array
      */
-    private function formatPrice(?float $price): ?string
+    private function getFiltersFromRequest(): array
     {
-        if ($price === null) {
-            return null;
+        $filters = [];
+
+        if ($categoryId = $this->request->getParam('category_id')) {
+            $filters['category_id'] = (int) $categoryId;
         }
 
-        return '$' . number_format($price, 2);
+        if ($priceRange = $this->request->getParam('price_range')) {
+            $filters['price_range'] = $priceRange;
+        }
+
+        if ($brands = $this->request->getParam('brands')) {
+            $filters['brands'] = is_array($brands) ? $brands : explode(',', $brands);
+        }
+
+        return $filters;
     }
 }

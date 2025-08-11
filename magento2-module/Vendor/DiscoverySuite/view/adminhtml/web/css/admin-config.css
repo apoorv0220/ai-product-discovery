@@ -1,0 +1,105 @@
+/**
+ * AI Discovery Suite Admin Configuration Styles
+ */
+
+.admin__page-section-title .admin__page-section-title-prefix {
+    color: #eb5202;
+}
+
+.discovery-suite-config {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 10px 0;
+}
+
+.discovery-suite-config h3 {
+    color: #eb5202;
+    margin: 0 0 15px 0;
+    font-size: 16px;
+}
+
+.discovery-suite-status {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.discovery-suite-status.enabled {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.discovery-suite-status.disabled {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.discovery-suite-service-check {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.discovery-suite-service-check.success {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+}
+
+.discovery-suite-service-check.error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.discovery-suite-test-button {
+    background: #eb5202;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.discovery-suite-test-button:hover {
+    background: #cc4700;
+}
+
+.discovery-suite-info-box {
+    background: #e7f3ff;
+    border: 1px solid #b8daff;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.discovery-suite-info-box h4 {
+    color: #004085;
+    margin: 0 0 10px 0;
+}
+
+.discovery-suite-feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.discovery-suite-feature-list li {
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.discovery-suite-feature-list li:before {
+    content: "✓";
+    color: #28a745;
+    font-weight: bold;
+    margin-right: 10px;
+}

@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Deployment DI Configuration
+ * This file contains DI configurations that depend on Magento core classes
+ * These should be uncommented and moved to di.xml when deploying to actual Magento
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    
+    <!-- Plugin Configuration for Magento Core Classes -->
+    <type name="Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection">
+        <plugin name="discovery_suite_search_plugin" 
+                type="Vendor\DiscoverySuite\Plugin\Search\CollectionPlugin" 
+                sortOrder="100"/>
+    </type>
+    
+    <type name="Magento\Catalog\Block\Product\ListProduct">
+        <plugin name="discovery_suite_listing_plugin" 
+                type="Vendor\DiscoverySuite\Plugin\Catalog\ListProductPlugin" 
+                sortOrder="100"/>
+    </type>
+    
+    <!-- Console Commands -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="discovery_sync_catalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
+                <item name="discovery_reindex_search" xsi:type="object">Vendor\DiscoverySuite\Console\Command\ReindexSearch</item>
+                <item name="discovery_test_connection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
+            </argument>
+        </arguments>
+    </type>
+    
+</config>

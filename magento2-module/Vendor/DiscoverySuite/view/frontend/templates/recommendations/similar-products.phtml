@@ -1,0 +1,60 @@
+<?php
+/**
+ * AI Similar Products Recommendations Template
+ * @var \Vendor\DiscoverySuite\Block\Recommendations\Widget $block
+ */
+?>
+<?php if ($block->isEnabled()): ?>
+<?php $recommendations = $block->getSimilarProducts(); ?>
+<?php if (!empty($recommendations)): ?>
+<div class="discovery-recommendations-container discovery-similar-products">
+    <h3 class="discovery-section-title"><?= __('You Might Also Like') ?></h3>
+    
+    <div class="discovery-products-grid">
+        <?php foreach ($recommendations as $recommendation): ?>
+            <?php $product = $recommendation['product']; ?>
+            <div class="discovery-product-item" data-product-id="<?= $product->getId() ?>">
+                <a href="<?= $product->getProductUrl() ?>" class="discovery-product-link">
+                    <div class="discovery-product-image">
+                        <?php $imageUrl = $this->helper('Magento\Catalog\Helper\Image')
+                            ->init($product, 'product_page_image_small')
+                            ->setImageFile($product->getSmallImage())
+                            ->resize(200, 200)
+                            ->getUrl(); ?>
+                        <img src="<?= $imageUrl ?>" alt="<?= $block->escapeHtml($product->getName()) ?>" />
+                    </div>
+                    
+                    <div class="discovery-product-details">
+                        <h4 class="discovery-product-name"><?= $block->escapeHtml($product->getName()) ?></h4>
+                        
+                        <?php if ($product->getPrice()): ?>
+                        <div class="discovery-product-price">
+                            <?= $this->helper('Magento\Framework\Pricing\Helper\Data')->currency($product->getPrice(), true, false) ?>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($recommendation['score'])): ?>
+                        <div class="discovery-match-score">
+                            <?= round($recommendation['score'] * 100) ?>% match
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </a>
+                
+                <button class="discovery-add-to-cart" data-product-id="<?= $product->getId() ?>">
+                    <?= __('Add to Cart') ?>
+                </button>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<script type="text/x-magento-init">
+{
+    ".discovery-similar-products": {
+        "discoveryRecommendations": <?= $block->getConfigJson() ?>
+    }
+}
+</script>
+<?php endif; ?>
+<?php endif; ?>

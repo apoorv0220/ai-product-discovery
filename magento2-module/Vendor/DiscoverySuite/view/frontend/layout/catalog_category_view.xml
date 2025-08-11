@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Category View Layout
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <!-- Dynamic Filters -->
+        <referenceContainer name="catalog.leftnav">
+            <block class="Vendor\DiscoverySuite\Block\Listing\DynamicFilters" 
+                   name="discovery.dynamic.filters" 
+                   template="Vendor_DiscoverySuite::listing/dynamic-filters.phtml"
+                   before="-"/>
+        </referenceContainer>
+        
+        <!-- Category Recommendations -->
+        <referenceContainer name="content">
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Widget" 
+                   name="discovery.recommendations.category" 
+                   template="Vendor_DiscoverySuite::recommendations/category-recommendations.phtml"
+                   after="category.products.list">
+                <arguments>
+                    <argument name="context" xsi:type="string">category_view</argument>
+                    <argument name="limit" xsi:type="number">12</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

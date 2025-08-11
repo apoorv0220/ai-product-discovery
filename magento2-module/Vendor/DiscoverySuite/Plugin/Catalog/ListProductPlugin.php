@@ -1,6 +1,6 @@
 <?php
 /**
- * DiscoverySuite Catalog List Product Plugin
+ * DiscoverySuite List Product Plugin
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -13,8 +13,10 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Plugin\Catalog;
 
-use Magento\Catalog\Block\Product\ListProduct;
 use Vendor\DiscoverySuite\Model\Listing\ListingOptimizer;
+use Vendor\DiscoverySuite\Helper\Data;
+use Magento\Catalog\Block\Product\ListProduct;
+use Magento\Catalog\Model\ResourceModel\Product\Collection;
 use Magento\Framework\Registry;
 use Psr\Log\LoggerInterface;
 
@@ -24,6 +26,11 @@ class ListProductPlugin
      * @var ListingOptimizer
      */
     private $listingOptimizer;
+
+    /**
+     * @var Data
+     */
+    private $helper;
 
     /**
      * @var Registry
@@ -36,87 +43,99 @@ class ListProductPlugin
     private $logger;
 
     /**
+     * Constructor
+     *
      * @param ListingOptimizer $listingOptimizer
+     * @param Data $helper
      * @param Registry $registry
      * @param LoggerInterface $logger
      */
     public function __construct(
         ListingOptimizer $listingOptimizer,
+        Data $helper,
         Registry $registry,
         LoggerInterface $logger
     ) {
         $this->listingOptimizer = $listingOptimizer;
+        $this->helper = $helper;
         $this->registry = $registry;
         $this->logger = $logger;
     }
 
     /**
-     * Optimize product collection before rendering
+     * Around method for getLoadedProductCollection to optimize product order
      *
      * @param ListProduct $subject
      * @param callable $proceed
-     * @return \Magento\Catalog\Model\ResourceModel\Product\Collection
+     * @return Collection
      */
     public function aroundGetLoadedProductCollection(ListProduct $subject, callable $proceed)
     {
         $collection = $proceed();
 
-        if (!$this->listingOptimizer->isEnabled()) {
+        if (!$this->helper->isEnabled() || !$this->listingOptimizer->isEnabled()) {
             return $collection;
         }
 
         try {
-            // Get current category from registry
+            // Get current category
             $currentCategory = $this->registry->registry('current_category');
-            
-            $context = [
-                'page_type' => 'category',
-                'category_id' => $currentCategory ? $currentCategory->getId() : null,
-                'store_id' => $subject->getStoreId(),
-                'page_number' => $subject->getRequest()->getParam('p', 1),
-                'sort_order' => $subject->getRequest()->getParam('product_list_order'),
-                'applied_filters' => $this->getAppliedFilters($subject)
-            ];
+            $context = 'category';
+            $categoryId = null;
 
-            // Apply AI optimization to the collection
-            $optimizedCollection = $this->listingOptimizer->optimizeCollection($collection, $context);
+            if ($currentCategory) {
+                $categoryId = $currentCategory->getId();
+            } else {
+                $context = 'search';
+            }
 
-            return $optimizedCollection;
+            // Get product IDs from collection
+            $productIds = [];
+            foreach ($collection as $product) {
+                $productIds[] = (int) $product->getId();
+            }
+
+            if (!empty($productIds)) {
+                // Get optimized order from AI service
+                $optimizedOrder = $this->listingOptimizer->optimizeListingOrder(
+                    $productIds,
+                    $context,
+                    ['category_id' => $categoryId]
+                );
+
+                // Apply optimized ordering if different from current
+                if ($optimizedOrder !== $productIds && count($optimizedOrder) > 1) {
+                    $orderField = new \Zend_Db_Expr('FIELD(e.entity_id,' . implode(',', $optimizedOrder) . ')');
+                    $collection->getSelect()->order($orderField);
+
+                    $this->logger->info('AI listing optimization applied', [
+                        'context' => $context,
+                        'category_id' => $categoryId,
+                        'original_count' => count($productIds),
+                        'optimized_count' => count($optimizedOrder)
+                    ]);
+                }
+            }
 
         } catch (\Exception $e) {
-            $this->logger->error('List product plugin error', [
-                'error' => $e->getMessage(),
-                'category_id' => $currentCategory ? $currentCategory->getId() : null
+            $this->logger->error('Listing optimization failed', [
+                'error' => $e->getMessage()
             ]);
-
-            return $collection;
         }
+
+        return $collection;
     }
 
     /**
-     * Get applied filters from request
+     * After method for getMode to potentially inject AI insights
      *
      * @param ListProduct $subject
-     * @return array
+     * @param string $result
+     * @return string
      */
-    private function getAppliedFilters(ListProduct $subject): array
+    public function afterGetMode(ListProduct $subject, $result)
     {
-        $request = $subject->getRequest();
-        $filters = [];
-
-        // Get all request parameters that might be filters
-        foreach ($request->getParams() as $key => $value) {
-            // Skip standard pagination/sorting parameters
-            if (in_array($key, ['p', 'product_list_order', 'product_list_dir', 'product_list_limit'])) {
-                continue;
-            }
-
-            // Include filter parameters
-            if (!empty($value) && $key !== 'id') {
-                $filters[$key] = $value;
-            }
-        }
-
-        return $filters;
+        // Could be used to inject AI-driven view mode recommendations
+        return $result;
     }
 }

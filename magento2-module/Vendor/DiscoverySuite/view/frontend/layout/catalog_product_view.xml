@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Product View Layout
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="Vendor_DiscoverySuite::css/discovery-suite.css"/>
+        <script src="Vendor_DiscoverySuite::js/discovery-suite.js"/>
+    </head>
+    <body>
+        <!-- AI Recommendations on Product Page -->
+        <referenceContainer name="content">
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Widget" 
+                   name="discovery.recommendations.similar" 
+                   template="Vendor_DiscoverySuite::recommendations/similar-products.phtml"
+                   after="product.info.main">
+                <arguments>
+                    <argument name="context" xsi:type="string">product_view</argument>
+                    <argument name="limit" xsi:type="number">8</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+        
+        <!-- Shopping Assistant Widget -->
+        <referenceContainer name="before.body.end">
+            <block class="Vendor\DiscoverySuite\Block\Assistant\Widget" 
+                   name="discovery.assistant.widget" 
+                   template="Vendor_DiscoverySuite::assistant/widget.phtml">
+                <arguments>
+                    <argument name="position" xsi:type="string">bottom-right</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+        
+        <!-- Analytics Tracking -->
+        <referenceContainer name="before.body.end">
+            <block class="Vendor\DiscoverySuite\Block\Analytics\Pixel" 
+                   name="discovery.analytics.pixel" 
+                   template="Vendor_DiscoverySuite::analytics/pixel.phtml"/>
+        </referenceContainer>
+    </body>
+</page>

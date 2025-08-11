@@ -13,15 +13,27 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Controller\Analytics;
 
+use Vendor\DiscoverySuite\Api\AnalyticsInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\ResultInterface;
-use Vendor\DiscoverySuite\Api\AnalyticsInterface;
+use Magento\Customer\Model\Session as CustomerSession;
 use Psr\Log\LoggerInterface;
 
 class Track implements HttpPostActionInterface
 {
+    /**
+     * @var AnalyticsInterface
+     */
+    private $analyticsService;
+
+    /**
+     * @var Data
+     */
+    private $helper;
+
     /**
      * @var RequestInterface
      */
@@ -30,12 +42,12 @@ class Track implements HttpPostActionInterface
     /**
      * @var JsonFactory
      */
-    private $jsonFactory;
+    private $resultJsonFactory;
 
     /**
-     * @var AnalyticsInterface
+     * @var CustomerSession
      */
-    private $analyticsService;
+    private $customerSession;
 
     /**
      * @var LoggerInterface
@@ -43,80 +55,114 @@ class Track implements HttpPostActionInterface
     private $logger;
 
     /**
-     * @param RequestInterface $request
-     * @param JsonFactory $jsonFactory
+     * Constructor
+     *
      * @param AnalyticsInterface $analyticsService
+     * @param Data $helper
+     * @param RequestInterface $request
+     * @param JsonFactory $resultJsonFactory
+     * @param CustomerSession $customerSession
      * @param LoggerInterface $logger
      */
     public function __construct(
-        RequestInterface $request,
-        JsonFactory $jsonFactory,
         AnalyticsInterface $analyticsService,
+        Data $helper,
+        RequestInterface $request,
+        JsonFactory $resultJsonFactory,
+        CustomerSession $customerSession,
         LoggerInterface $logger
     ) {
-        $this->request = $request;
-        $this->jsonFactory = $jsonFactory;
         $this->analyticsService = $analyticsService;
+        $this->helper = $helper;
+        $this->request = $request;
+        $this->resultJsonFactory = $resultJsonFactory;
+        $this->customerSession = $customerSession;
         $this->logger = $logger;
     }
 
     /**
-     * Execute tracking request
+     * Execute track analytics event action
      *
      * @return ResultInterface
      */
     public function execute(): ResultInterface
     {
-        $result = $this->jsonFactory->create();
+        $result = $this->resultJsonFactory->create();
+
+        if (!$this->helper->isAnalyticsEnabled()) {
+            return $result->setData([
+                'success' => false,
+                'message' => 'Analytics tracking is disabled'
+            ]);
+        }
 
         try {
-            // Get request data
-            $input = file_get_contents('php://input');
-            $data = json_decode($input, true);
+            $eventType = (string) $this->request->getParam('event_type');
+            $eventData = $this->request->getParam('event_data', []);
 
-            if (!$data) {
-                $data = $this->request->getParams();
-            }
-
-            $eventType = $data['event_type'] ?? '';
-            $eventData = $data['event_data'] ?? [];
-            $customerId = isset($data['customer_id']) && $data['customer_id'] ? (int) $data['customer_id'] : null;
-            $sessionId = $data['session_id'] ?? null;
-            $storeId = isset($data['store_id']) ? (int) $data['store_id'] : null;
-
-            // Validate required fields
-            if (empty($eventType)) {
+            if (!$eventType) {
                 return $result->setData([
                     'success' => false,
-                    'error' => 'Event type is required'
+                    'message' => 'Missing event type'
                 ]);
             }
 
-            // Track the event
-            $success = $this->analyticsService->trackEvent(
+            $userId = $this->getUserId();
+
+            // Sanitize and validate event data
+            if (!is_array($eventData)) {
+                $eventData = [];
+            }
+
+            // Add standard tracking data
+            $eventData['timestamp'] = time();
+            $eventData['user_agent'] = $this->request->getServer('HTTP_USER_AGENT');
+            $eventData['ip_address'] = $this->request->getClientIp();
+            $eventData['referrer'] = $this->request->getServer('HTTP_REFERER');
+
+            $tracked = $this->analyticsService->trackEvent(
                 $eventType,
                 $eventData,
-                $customerId,
-                $sessionId,
-                $storeId
+                $userId
             );
 
-            return $result->setData([
-                'success' => $success,
-                'message' => $success ? 'Event tracked successfully' : 'Failed to track event'
-            ]);
+            if ($tracked) {
+                return $result->setData([
+                    'success' => true,
+                    'message' => 'Event tracked successfully'
+                ]);
+            } else {
+                return $result->setData([
+                    'success' => false,
+                    'message' => 'Failed to track event'
+                ]);
+            }
 
         } catch (\Exception $e) {
-            $this->logger->error('Analytics tracking controller error', [
-                'request_data' => $this->request->getParams(),
+            $this->logger->error('Analytics tracking failed', [
+                'event_type' => $this->request->getParam('event_type'),
+                'user_id' => $this->getUserId(),
                 'error' => $e->getMessage()
             ]);
 
             return $result->setData([
                 'success' => false,
-                'error' => 'Tracking failed',
-                'message' => $e->getMessage()
+                'message' => 'Analytics tracking failed'
             ]);
         }
+    }
+
+    /**
+     * Get user ID
+     *
+     * @return string
+     */
+    private function getUserId(): string
+    {
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
+
+        return 'guest_' . $this->customerSession->getSessionId();
     }
 }

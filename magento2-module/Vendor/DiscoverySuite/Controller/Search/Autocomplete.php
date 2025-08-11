@@ -13,15 +13,27 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Controller\Search;
 
+use Vendor\DiscoverySuite\Api\SearchInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\App\Action\HttpGetActionInterface;
+use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\ResultInterface;
-use Vendor\DiscoverySuite\Api\SearchInterface;
 use Psr\Log\LoggerInterface;
 
-class Autocomplete implements HttpGetActionInterface
+class Autocomplete implements HttpGetActionInterface, HttpPostActionInterface
 {
+    /**
+     * @var SearchInterface
+     */
+    private $searchService;
+
+    /**
+     * @var Data
+     */
+    private $helper;
+
     /**
      * @var RequestInterface
      */
@@ -30,12 +42,7 @@ class Autocomplete implements HttpGetActionInterface
     /**
      * @var JsonFactory
      */
-    private $jsonFactory;
-
-    /**
-     * @var SearchInterface
-     */
-    private $searchService;
+    private $resultJsonFactory;
 
     /**
      * @var LoggerInterface
@@ -43,72 +50,75 @@ class Autocomplete implements HttpGetActionInterface
     private $logger;
 
     /**
-     * @param RequestInterface $request
-     * @param JsonFactory $jsonFactory
+     * Constructor
+     *
      * @param SearchInterface $searchService
+     * @param Data $helper
+     * @param RequestInterface $request
+     * @param JsonFactory $resultJsonFactory
      * @param LoggerInterface $logger
      */
     public function __construct(
-        RequestInterface $request,
-        JsonFactory $jsonFactory,
         SearchInterface $searchService,
+        Data $helper,
+        RequestInterface $request,
+        JsonFactory $resultJsonFactory,
         LoggerInterface $logger
     ) {
-        $this->request = $request;
-        $this->jsonFactory = $jsonFactory;
         $this->searchService = $searchService;
+        $this->helper = $helper;
+        $this->request = $request;
+        $this->resultJsonFactory = $resultJsonFactory;
         $this->logger = $logger;
     }
 
     /**
-     * Execute autocomplete request
+     * Execute autocomplete action
      *
      * @return ResultInterface
      */
     public function execute(): ResultInterface
     {
-        $result = $this->jsonFactory->create();
+        $result = $this->resultJsonFactory->create();
+
+        if (!$this->helper->isAutocompleteEnabled()) {
+            return $result->setData([
+                'success' => false,
+                'message' => 'Autocomplete is disabled',
+                'suggestions' => []
+            ]);
+        }
 
         try {
             $query = trim((string) $this->request->getParam('q', ''));
             $limit = (int) $this->request->getParam('limit', 10);
 
-            if (empty($query)) {
+            if (strlen($query) < 2) {
                 return $result->setData([
-                    'suggestions' => [],
-                    'products' => [],
-                    'categories' => []
+                    'success' => false,
+                    'message' => 'Query too short',
+                    'suggestions' => []
                 ]);
             }
 
-            // Get autocomplete results from AI service
-            $autocompleteData = $this->searchService->autocomplete($query, null, $limit);
+            $suggestions = $this->searchService->autocomplete($query, $limit);
 
-            // Get spell corrections and suggestions
-            $suggestions = $this->searchService->getSuggestions($query);
-
-            // Merge the data
-            $responseData = [
-                'suggestions' => $autocompleteData['suggestions'] ?? [],
-                'products' => $autocompleteData['products'] ?? [],
-                'categories' => $autocompleteData['categories'] ?? [],
-                'spell_correction' => $suggestions['spell_correction'] ?? null,
-                'related_queries' => $suggestions['related_queries'] ?? []
-            ];
-
-            return $result->setData($responseData);
+            return $result->setData([
+                'success' => true,
+                'query' => $query,
+                'suggestions' => $suggestions
+            ]);
 
         } catch (\Exception $e) {
-            $this->logger->error('Autocomplete controller error', [
+            $this->logger->error('Autocomplete request failed', [
                 'query' => $this->request->getParam('q', ''),
                 'error' => $e->getMessage()
             ]);
 
             return $result->setData([
-                'suggestions' => [],
-                'products' => [],
-                'categories' => [],
-                'error' => 'Autocomplete service temporarily unavailable'
+                'success' => false,
+                'message' => 'Autocomplete request failed',
+                'suggestions' => []
             ]);
         }
     }

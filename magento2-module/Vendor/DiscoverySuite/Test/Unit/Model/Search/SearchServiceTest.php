@@ -13,13 +13,11 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Test\Unit\Model\Search;
 
+use Vendor\DiscoverySuite\Model\Search\SearchService;
+use Vendor\DiscoverySuite\Helper\Data;
+use Vendor\DiscoverySuite\Model\Api\HttpClient;
 use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\MockObject\MockObject;
-use Vendor\DiscoverySuite\Model\Search\SearchService;
-use Vendor\DiscoverySuite\Model\Api\HttpClient;
-use Vendor\DiscoverySuite\Helper\Config;
-use Magento\Store\Model\StoreManagerInterface;
-use Magento\Customer\Model\Session as CustomerSession;
 use Psr\Log\LoggerInterface;
 
 class SearchServiceTest extends TestCase
@@ -30,24 +28,14 @@ class SearchServiceTest extends TestCase
     private $searchService;
 
     /**
+     * @var Data|MockObject
+     */
+    private $helperMock;
+
+    /**
      * @var HttpClient|MockObject
      */
     private $httpClientMock;
-
-    /**
-     * @var Config|MockObject
-     */
-    private $configHelperMock;
-
-    /**
-     * @var StoreManagerInterface|MockObject
-     */
-    private $storeManagerMock;
-
-    /**
-     * @var CustomerSession|MockObject
-     */
-    private $customerSessionMock;
 
     /**
      * @var LoggerInterface|MockObject
@@ -55,142 +43,182 @@ class SearchServiceTest extends TestCase
     private $loggerMock;
 
     /**
-     * Set up test fixtures
+     * Set up test
      */
     protected function setUp(): void
     {
+        $this->helperMock = $this->createMock(Data::class);
         $this->httpClientMock = $this->createMock(HttpClient::class);
-        $this->configHelperMock = $this->createMock(Config::class);
-        $this->storeManagerMock = $this->createMock(StoreManagerInterface::class);
-        $this->customerSessionMock = $this->createMock(CustomerSession::class);
         $this->loggerMock = $this->createMock(LoggerInterface::class);
 
         $this->searchService = new SearchService(
+            $this->helperMock,
             $this->httpClientMock,
-            $this->configHelperMock,
-            $this->storeManagerMock,
-            $this->customerSessionMock,
             $this->loggerMock
         );
     }
 
     /**
-     * Test search functionality
+     * Test search method when service is disabled
      */
-    public function testSearch(): void
+    public function testSearchWhenDisabled()
     {
-        $searchQuery = 'test product';
-        $storeId = 1;
+        $this->helperMock->expects($this->once())
+            ->method('isSearchEnabled')
+            ->willReturn(false);
+
+        $result = $this->searchService->search('test query');
+
+        $this->assertEmpty($result);
+    }
+
+    /**
+     * Test search method when service is enabled
+     */
+    public function testSearchWhenEnabled()
+    {
         $expectedResponse = [
             'products' => [
                 ['id' => 1, 'name' => 'Test Product 1'],
                 ['id' => 2, 'name' => 'Test Product 2']
             ],
-            'total_count' => 2,
-            'took' => 50
+            'total' => 2
         ];
 
-        $this->configHelperMock->expects($this->once())
-            ->method('isEnabled')
+        $this->helperMock->expects($this->once())
+            ->method('isSearchEnabled')
             ->willReturn(true);
+
+        $this->helperMock->expects($this->once())
+            ->method('getServiceUrl')
+            ->with('search', '/api/v1/search/')
+            ->willReturn('http://localhost:7001/api/v1/search/');
 
         $this->httpClientMock->expects($this->once())
             ->method('post')
-            ->with('/search', $this->isType('array'))
+            ->with(
+                'http://localhost:7001/api/v1/search/',
+                [
+                    'query' => 'test query',
+                    'limit' => 20,
+                    'offset' => 0,
+                    'filters' => []
+                ]
+            )
             ->willReturn($expectedResponse);
 
-        $result = $this->searchService->search($searchQuery, [], null, $storeId);
+        $result = $this->searchService->search('test query');
 
         $this->assertEquals($expectedResponse, $result);
     }
 
     /**
-     * Test search with disabled module
+     * Test autocomplete method when service is disabled
      */
-    public function testSearchWithDisabledModule(): void
+    public function testAutocompleteWhenDisabled()
     {
-        $this->configHelperMock->expects($this->once())
-            ->method('isEnabled')
+        $this->helperMock->expects($this->once())
+            ->method('isAutocompleteEnabled')
             ->willReturn(false);
 
-        $this->httpClientMock->expects($this->never())
-            ->method('post');
+        $result = $this->searchService->autocomplete('test');
 
-        $result = $this->searchService->search('test', [], null, 1);
-
-        $this->assertEquals(['products' => [], 'total_count' => 0], $result);
+        $this->assertEmpty($result);
     }
 
     /**
-     * Test autocomplete functionality
+     * Test autocomplete method when service is enabled
      */
-    public function testAutocomplete(): void
+    public function testAutocompleteWhenEnabled()
     {
-        $query = 'test';
         $expectedResponse = [
-            'suggestions' => ['test product', 'test item'],
-            'products' => [
-                ['id' => 1, 'name' => 'Test Product']
+            'suggestions' => [
+                'test product 1',
+                'test product 2',
+                'test category'
             ]
         ];
 
-        $this->configHelperMock->expects($this->once())
-            ->method('isEnabled')
+        $this->helperMock->expects($this->once())
+            ->method('isAutocompleteEnabled')
             ->willReturn(true);
+
+        $this->helperMock->expects($this->once())
+            ->method('getServiceUrl')
+            ->with('search', '/api/v1/autocomplete/')
+            ->willReturn('http://localhost:7001/api/v1/autocomplete/');
 
         $this->httpClientMock->expects($this->once())
             ->method('post')
-            ->with('/autocomplete', $this->isType('array'))
+            ->with(
+                'http://localhost:7001/api/v1/autocomplete/',
+                [
+                    'query' => 'test',
+                    'limit' => 10
+                ]
+            )
             ->willReturn($expectedResponse);
 
-        $result = $this->searchService->autocomplete($query, [], null, 1);
+        $result = $this->searchService->autocomplete('test');
 
-        $this->assertEquals($expectedResponse, $result);
+        $this->assertEquals($expectedResponse['suggestions'], $result);
     }
 
     /**
-     * Test sync product functionality
+     * Test indexProducts method
      */
-    public function testSyncProduct(): void
+    public function testIndexProducts()
     {
-        $productData = [
-            'id' => 1,
-            'name' => 'Test Product',
-            'price' => 99.99
+        $products = [
+            ['id' => 1, 'name' => 'Product 1'],
+            ['id' => 2, 'name' => 'Product 2']
         ];
 
-        $this->configHelperMock->expects($this->once())
+        $this->helperMock->expects($this->once())
             ->method('isEnabled')
             ->willReturn(true);
 
+        $this->helperMock->expects($this->once())
+            ->method('getServiceUrl')
+            ->with('search', '/api/v1/index/')
+            ->willReturn('http://localhost:7001/api/v1/index/');
+
         $this->httpClientMock->expects($this->once())
             ->method('post')
-            ->with('/sync/product', $productData)
+            ->with(
+                'http://localhost:7001/api/v1/index/',
+                ['products' => $products]
+            )
             ->willReturn(['success' => true]);
 
-        $result = $this->searchService->syncProduct($productData, 1);
+        $result = $this->searchService->indexProducts($products);
 
         $this->assertTrue($result);
     }
 
     /**
-     * Test error handling
+     * Test deleteProduct method
      */
-    public function testSearchWithError(): void
+    public function testDeleteProduct()
     {
-        $this->configHelperMock->expects($this->once())
+        $productId = 123;
+
+        $this->helperMock->expects($this->once())
             ->method('isEnabled')
             ->willReturn(true);
 
+        $this->helperMock->expects($this->once())
+            ->method('getServiceUrl')
+            ->with('search', '/api/v1/index/123')
+            ->willReturn('http://localhost:7001/api/v1/index/123');
+
         $this->httpClientMock->expects($this->once())
-            ->method('post')
-            ->willThrowException(new \Exception('API Error'));
+            ->method('delete')
+            ->with('http://localhost:7001/api/v1/index/123')
+            ->willReturn(['success' => true]);
 
-        $this->loggerMock->expects($this->once())
-            ->method('error');
+        $result = $this->searchService->deleteProduct($productId);
 
-        $result = $this->searchService->search('test', [], null, 1);
-
-        $this->assertEquals(['products' => [], 'total_count' => 0], $result);
+        $this->assertTrue($result);
     }
 }

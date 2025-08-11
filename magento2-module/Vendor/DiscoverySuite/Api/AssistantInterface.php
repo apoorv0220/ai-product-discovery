@@ -1,6 +1,6 @@
 <?php
 /**
- * DiscoverySuite Shopping Assistant API Interface
+ * DiscoverySuite Shopping Assistant Interface
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -9,169 +9,42 @@
  * @license     https://opensource.org/licenses/MIT MIT License
  */
 
-declare(strict_types=1);
-
 namespace Vendor\DiscoverySuite\Api;
 
 interface AssistantInterface
 {
     /**
-     * Start a new shopping session
+     * Start chat session
      *
-     * @param array $userContext User context data
-     * @param int|null $customerId Customer ID
-     * @param int|null $storeId Store ID
-     * @return array Session data
+     * @param string $userId
+     * @param array $context
+     * @return array
      */
-    public function startSession(
-        array $userContext = [],
-        ?int $customerId = null,
-        ?int $storeId = null
-    ): array;
+    public function startSession(string $userId, array $context = []): array;
 
     /**
-     * Process user input and get assistant response
+     * Send message to assistant
      *
-     * @param string $sessionId Session ID
-     * @param string $userInput User input/message
-     * @param array $context Additional context
-     * @return array Assistant response
+     * @param string $sessionId
+     * @param string $message
+     * @param array $context
+     * @return array
      */
-    public function processInput(
-        string $sessionId,
-        string $userInput,
-        array $context = []
-    ): array;
+    public function sendMessage(string $sessionId, string $message, array $context = []): array;
 
     /**
-     * Get guided flow questions
+     * End chat session
      *
-     * @param string $flowType Flow type (category selection, product finder, etc.)
-     * @param array $currentAnswers Current answers
-     * @param int|null $storeId Store ID
-     * @return array Flow questions
+     * @param string $sessionId
+     * @return bool
      */
-    public function getGuidedFlow(
-        string $flowType,
-        array $currentAnswers = [],
-        ?int $storeId = null
-    ): array;
-
-    /**
-     * Submit guided flow answers and get recommendations
-     *
-     * @param string $flowType Flow type
-     * @param array $answers User answers
-     * @param int|null $customerId Customer ID
-     * @param int|null $storeId Store ID
-     * @return array Product recommendations
-     */
-    public function submitGuidedFlow(
-        string $flowType,
-        array $answers,
-        ?int $customerId = null,
-        ?int $storeId = null
-    ): array;
-
-    /**
-     * Get product recommendations based on requirements
-     *
-     * @param array $requirements User requirements
-     * @param array $preferences User preferences
-     * @param int|null $customerId Customer ID
-     * @param int|null $storeId Store ID
-     * @param int $limit Number of recommendations
-     * @return array Product recommendations
-     */
-    public function getProductRecommendations(
-        array $requirements,
-        array $preferences = [],
-        ?int $customerId = null,
-        ?int $storeId = null,
-        int $limit = 10
-    ): array;
-
-    /**
-     * Compare products
-     *
-     * @param array $productIds Product IDs to compare
-     * @param array $comparisonCriteria Comparison criteria
-     * @param int|null $storeId Store ID
-     * @return array Product comparison data
-     */
-    public function compareProducts(
-        array $productIds,
-        array $comparisonCriteria = [],
-        ?int $storeId = null
-    ): array;
-
-    /**
-     * Get assistant analytics
-     *
-     * @param string $period Time period
-     * @param int|null $storeId Store ID
-     * @return array Analytics data
-     */
-    public function getAssistantAnalytics(
-        string $period = 'week',
-        ?int $storeId = null
-    ): array;
-
-    /**
-     * Track assistant interaction
-     *
-     * @param string $sessionId Session ID
-     * @param string $interactionType Interaction type
-     * @param array $interactionData Interaction data
-     * @param int|null $customerId Customer ID
-     * @return bool Success status
-     */
-    public function trackInteraction(
-        string $sessionId,
-        string $interactionType,
-        array $interactionData,
-        ?int $customerId = null
-    ): bool;
-
-    /**
-     * End shopping session
-     *
-     * @param string $sessionId Session ID
-     * @param array $sessionSummary Session summary data
-     * @return bool Success status
-     */
-    public function endSession(
-        string $sessionId,
-        array $sessionSummary = []
-    ): bool;
+    public function endSession(string $sessionId): bool;
 
     /**
      * Get session history
      *
-     * @param string $sessionId Session ID
-     * @return array Session history
+     * @param string $sessionId
+     * @return array
      */
     public function getSessionHistory(string $sessionId): array;
-
-    /**
-     * Get available assistant flows
-     *
-     * @param int|null $storeId Store ID
-     * @return array Available flows
-     */
-    public function getAvailableFlows(?int $storeId = null): array;
-
-    /**
-     * Create custom flow
-     *
-     * @param string $flowName Flow name
-     * @param array $flowConfig Flow configuration
-     * @param int|null $storeId Store ID
-     * @return string Flow ID
-     */
-    public function createCustomFlow(
-        string $flowName,
-        array $flowConfig,
-        ?int $storeId = null
-    ): string;
 }

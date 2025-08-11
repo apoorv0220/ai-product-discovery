@@ -42,7 +42,7 @@
                         <resource id="Vendor_DiscoverySuite::assistant_flows" title="Guided Flows"/>
                         <resource id="Vendor_DiscoverySuite::assistant_analytics" title="Assistant Analytics"/>
                     </resource>
-                    <resource id="Vendor_DiscoverySuite::analytics" title="Analytics & Reports">
+                    <resource id="Vendor_DiscoverySuite::analytics" title="Analytics &amp; Reports">
                         <resource id="Vendor_DiscoverySuite::analytics_dashboard" title="Analytics Dashboard"/>
                         <resource id="Vendor_DiscoverySuite::ab_testing" title="A/B Testing"/>
                         <resource id="Vendor_DiscoverySuite::performance_reports" title="Performance Reports"/>

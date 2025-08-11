@@ -27,39 +27,51 @@
     <virtualType name="DiscoverySuiteSearchClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
             <argument name="baseUri" xsi:type="string">search-service</argument>
-            <argument name="defaultPort" xsi:type="string">8001</argument>
+            <argument name="defaultPort" xsi:type="string">7001</argument>
         </arguments>
     </virtualType>
     
     <virtualType name="DiscoverySuiteRecommendationClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
             <argument name="baseUri" xsi:type="string">recommendation-service</argument>
-            <argument name="defaultPort" xsi:type="string">8002</argument>
+            <argument name="defaultPort" xsi:type="string">7002</argument>
         </arguments>
     </virtualType>
     
     <virtualType name="DiscoverySuiteListingClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
             <argument name="baseUri" xsi:type="string">listing-optimizer</argument>
-            <argument name="defaultPort" xsi:type="string">8003</argument>
+            <argument name="defaultPort" xsi:type="string">7003</argument>
         </arguments>
     </virtualType>
     
     <virtualType name="DiscoverySuiteAnalyticsClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
             <argument name="baseUri" xsi:type="string">analytics-service</argument>
-            <argument name="defaultPort" xsi:type="string">8004</argument>
+            <argument name="defaultPort" xsi:type="string">7003</argument>
         </arguments>
     </virtualType>
     
     <virtualType name="DiscoverySuiteAssistantClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
             <argument name="baseUri" xsi:type="string">shopping-assistant</argument>
-            <argument name="defaultPort" xsi:type="string">8005</argument>
+            <argument name="defaultPort" xsi:type="string">7004</argument>
         </arguments>
     </virtualType>
     
-    <!-- Plugin Configuration -->
+    <!-- Console Commands - Essential for data sync -->
+    <type name="Magento\Framework\Console\CommandListInterface">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="discovery_sync_catalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
+                <item name="discovery_reindex_search" xsi:type="object">Vendor\DiscoverySuite\Console\Command\ReindexSearch</item>
+                <item name="discovery_test_connection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
+            </argument>
+        </arguments>
+    </type>
+    
+    <!-- Plugin Configuration - Will be enabled when needed -->
+    <!--
     <type name="Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection">
         <plugin name="discovery_suite_search_plugin" 
                 type="Vendor\DiscoverySuite\Plugin\Search\CollectionPlugin" 
@@ -71,15 +83,36 @@
                 type="Vendor\DiscoverySuite\Plugin\Catalog\ListProductPlugin" 
                 sortOrder="100"/>
     </type>
+    -->
     
-    <!-- Console Commands -->
-    <type name="Magento\Framework\Console\CommandListInterface">
+    <!-- Service HTTP Client Injection -->
+    <type name="Vendor\DiscoverySuite\Model\Search\SearchService">
         <arguments>
-            <argument name="commands" xsi:type="array">
-                <item name="discovery_sync_catalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
-                <item name="discovery_reindex_search" xsi:type="object">Vendor\DiscoverySuite\Console\Command\ReindexSearch</item>
-                <item name="discovery_test_connection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
-            </argument>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Model\Recommendations\RecommendationService">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteRecommendationClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Model\Analytics\AnalyticsService">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteAnalyticsClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Model\Assistant\AssistantService">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteAssistantClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Model\Listing\ListingOptimizer">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteListingClient</argument>
         </arguments>
     </type>
     

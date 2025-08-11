@@ -13,30 +13,25 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Block\Assistant;
 
+use Vendor\DiscoverySuite\Api\AssistantInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
-use Magento\Framework\Serialize\Serializer\Json;
-use Vendor\DiscoverySuite\Api\AssistantInterface;
 use Magento\Customer\Model\Session as CustomerSession;
+use Magento\Framework\Json\Helper\Data as JsonHelper;
+use Magento\Checkout\Model\Session as CheckoutSession;
 
 class Widget extends Template
 {
     /**
-     * @var ScopeConfigInterface
-     */
-    private $scopeConfig;
-
-    /**
-     * @var Json
-     */
-    private $jsonSerializer;
-
-    /**
      * @var AssistantInterface
      */
     private $assistantService;
+
+    /**
+     * @var Data
+     */
+    private $helper;
 
     /**
      * @var CustomerSession
@@ -44,34 +39,40 @@ class Widget extends Template
     private $customerSession;
 
     /**
-     * Configuration paths
+     * @var JsonHelper
      */
-    const XML_PATH_ASSISTANT_ENABLED = 'discovery_suite/shopping_assistant/enabled';
-    const XML_PATH_WIDGET_POSITION = 'discovery_suite/shopping_assistant/widget_position';
-    const XML_PATH_CHAT_ENABLED = 'discovery_suite/shopping_assistant/chat_enabled';
-    const XML_PATH_GUIDED_FLOW_ENABLED = 'discovery_suite/shopping_assistant/guided_flow_enabled';
-    const XML_PATH_AUTO_TRIGGER_DELAY = 'discovery_suite/shopping_assistant/auto_trigger_delay';
+    private $jsonHelper;
 
     /**
+     * @var CheckoutSession
+     */
+    private $checkoutSession;
+
+    /**
+     * Constructor
+     *
      * @param Context $context
-     * @param ScopeConfigInterface $scopeConfig
-     * @param Json $jsonSerializer
      * @param AssistantInterface $assistantService
+     * @param Data $helper
      * @param CustomerSession $customerSession
+     * @param JsonHelper $jsonHelper
+     * @param CheckoutSession $checkoutSession
      * @param array $data
      */
     public function __construct(
         Context $context,
-        ScopeConfigInterface $scopeConfig,
-        Json $jsonSerializer,
         AssistantInterface $assistantService,
+        Data $helper,
         CustomerSession $customerSession,
+        JsonHelper $jsonHelper,
+        CheckoutSession $checkoutSession,
         array $data = []
     ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->jsonSerializer = $jsonSerializer;
         $this->assistantService = $assistantService;
+        $this->helper = $helper;
         $this->customerSession = $customerSession;
+        $this->jsonHelper = $jsonHelper;
+        $this->checkoutSession = $checkoutSession;
         parent::__construct($context, $data);
     }
 
@@ -82,196 +83,97 @@ class Widget extends Template
      */
     public function isEnabled(): bool
     {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_ASSISTANT_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        return $this->helper->isEnabled();
     }
 
     /**
-     * Get widget configuration
+     * Get widget configuration as JSON
      *
-     * @return string JSON encoded configuration
+     * @return string
      */
-    public function getWidgetConfig(): string
+    public function getConfigJson(): string
     {
         $config = [
             'enabled' => $this->isEnabled(),
-            'position' => $this->getWidgetPosition(),
-            'chatEnabled' => $this->isChatEnabled(),
-            'guidedFlowEnabled' => $this->isGuidedFlowEnabled(),
-            'autoTriggerDelay' => $this->getAutoTriggerDelay(),
-            'customerId' => $this->customerSession->getCustomerId(),
-            'storeId' => $this->_storeManager->getStore()->getId(),
-            'sessionUrl' => $this->getSessionUrl(),
-            'chatUrl' => $this->getChatUrl(),
-            'flowUrl' => $this->getFlowUrl(),
-            'trackingUrl' => $this->getTrackingUrl(),
-            'availableFlows' => $this->getAvailableFlows()
+            'userId' => $this->getUserId(),
+            'sessionEndpoint' => $this->getUrl('discovery/assistant/session'),
+            'chatEndpoint' => $this->getUrl('discovery/assistant/chat'),
+            'position' => $this->getData('position') ?: 'bottom-right',
+            'theme' => $this->getData('theme') ?: 'light',
+            'initialContext' => $this->getInitialContext(),
+            'welcomeMessage' => $this->getData('welcome_message') ?: __('Hi! How can I help you find the perfect product today?'),
+            'placeholderText' => $this->getData('placeholder_text') ?: __('Ask me anything about products...'),
+            'minimized' => (bool) $this->getData('minimized')
         ];
 
-        return $this->jsonSerializer->serialize($config);
+        return $this->jsonHelper->jsonEncode($config);
     }
 
     /**
-     * Get widget position
+     * Get user ID for assistant
      *
      * @return string
      */
-    public function getWidgetPosition(): string
+    private function getUserId(): string
     {
-        return $this->scopeConfig->getValue(
-            self::XML_PATH_WIDGET_POSITION,
-            ScopeInterface::SCOPE_STORE
-        ) ?: 'bottom_right';
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
+
+        return 'guest_' . $this->customerSession->getSessionId();
     }
 
     /**
-     * Check if chat is enabled
-     *
-     * @return bool
-     */
-    public function isChatEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_CHAT_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Check if guided flow is enabled
-     *
-     * @return bool
-     */
-    public function isGuidedFlowEnabled(): bool
-    {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_GUIDED_FLOW_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
-    }
-
-    /**
-     * Get auto trigger delay
-     *
-     * @return int
-     */
-    public function getAutoTriggerDelay(): int
-    {
-        return (int) $this->scopeConfig->getValue(
-            self::XML_PATH_AUTO_TRIGGER_DELAY,
-            ScopeInterface::SCOPE_STORE
-        ) ?: 30;
-    }
-
-    /**
-     * Get available flows
+     * Get initial context for the assistant
      *
      * @return array
      */
-    public function getAvailableFlows(): array
+    private function getInitialContext(): array
     {
+        $context = [
+            'store_id' => $this->_storeManager->getStore()->getId(),
+            'currency' => $this->_storeManager->getStore()->getCurrentCurrency()->getCode(),
+            'locale' => $this->_localeResolver->getLocale()
+        ];
+
+        // Add cart context if available
         try {
-            return $this->assistantService->getAvailableFlows();
+            $quote = $this->checkoutSession->getQuote();
+            if ($quote && $quote->getItemsCount() > 0) {
+                $context['cart'] = [
+                    'item_count' => $quote->getItemsCount(),
+                    'subtotal' => $quote->getSubtotal()
+                ];
+            }
         } catch (\Exception $e) {
-            $this->_logger->error('Failed to get available flows', [
-                'error' => $e->getMessage()
-            ]);
-            return [];
-        }
-    }
-
-    /**
-     * Get session URL
-     *
-     * @return string
-     */
-    public function getSessionUrl(): string
-    {
-        return $this->getUrl('discoverysuite/assistant/session');
-    }
-
-    /**
-     * Get chat URL
-     *
-     * @return string
-     */
-    public function getChatUrl(): string
-    {
-        return $this->getUrl('discoverysuite/assistant/chat');
-    }
-
-    /**
-     * Get flow URL
-     *
-     * @return string
-     */
-    public function getFlowUrl(): string
-    {
-        return $this->getUrl('discoverysuite/assistant/flow');
-    }
-
-    /**
-     * Get tracking URL
-     *
-     * @return string
-     */
-    public function getTrackingUrl(): string
-    {
-        return $this->getUrl('discoverysuite/assistant/track');
-    }
-
-    /**
-     * Get CSS classes for widget position
-     *
-     * @return string
-     */
-    public function getPositionClasses(): string
-    {
-        $position = $this->getWidgetPosition();
-        $classes = ['discovery-assistant-widget'];
-        
-        switch ($position) {
-            case 'bottom_left':
-                $classes[] = 'position-bottom-left';
-                break;
-            case 'bottom_right':
-                $classes[] = 'position-bottom-right';
-                break;
-            case 'top_left':
-                $classes[] = 'position-top-left';
-                break;
-            case 'top_right':
-                $classes[] = 'position-top-right';
-                break;
-            case 'center':
-                $classes[] = 'position-center';
-                break;
-            default:
-                $classes[] = 'position-bottom-right';
+            // Ignore cart context if not available
         }
 
-        return implode(' ', $classes);
+        // Add customer context if logged in
+        if ($this->customerSession->isLoggedIn()) {
+            $customer = $this->customerSession->getCustomer();
+            $context['customer'] = [
+                'group_id' => $customer->getGroupId(),
+                'is_logged_in' => true
+            ];
+        }
+
+        return $context;
     }
 
     /**
-     * Check if should show widget
+     * Get cache key info
      *
-     * @return bool
+     * @return array
      */
-    public function shouldShow(): bool
+    public function getCacheKeyInfo()
     {
-        return $this->isEnabled();
-    }
-
-    /**
-     * Get welcome message
-     *
-     * @return string
-     */
-    public function getWelcomeMessage(): string
-    {
-        return __('Hi! I\'m your AI shopping assistant. How can I help you find the perfect product today?');
+        return [
+            'DISCOVERY_ASSISTANT',
+            $this->_storeManager->getStore()->getId(),
+            $this->getUserId(),
+            $this->getData('position') ?: 'bottom-right',
+            $this->getData('theme') ?: 'light'
+        ];
     }
 }

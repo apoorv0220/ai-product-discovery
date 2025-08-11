@@ -13,32 +13,26 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Block\Recommendations;
 
+use Vendor\DiscoverySuite\Api\RecommendationInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
-use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Store\Model\ScopeInterface;
-use Magento\Framework\Serialize\Serializer\Json;
-use Vendor\DiscoverySuite\Api\RecommendationInterface;
 use Magento\Customer\Model\Session as CustomerSession;
-use Magento\Catalog\Model\ProductRepository;
+use Magento\Catalog\Api\ProductRepositoryInterface;
+use Magento\Framework\Json\Helper\Data as JsonHelper;
 use Magento\Framework\Registry;
 
 class Widget extends Template
 {
     /**
-     * @var ScopeConfigInterface
-     */
-    private $scopeConfig;
-
-    /**
-     * @var Json
-     */
-    private $jsonSerializer;
-
-    /**
      * @var RecommendationInterface
      */
     private $recommendationService;
+
+    /**
+     * @var Data
+     */
+    private $helper;
 
     /**
      * @var CustomerSession
@@ -46,9 +40,14 @@ class Widget extends Template
     private $customerSession;
 
     /**
-     * @var ProductRepository
+     * @var ProductRepositoryInterface
      */
     private $productRepository;
+
+    /**
+     * @var JsonHelper
+     */
+    private $jsonHelper;
 
     /**
      * @var Registry
@@ -56,35 +55,32 @@ class Widget extends Template
     private $registry;
 
     /**
-     * Configuration paths
-     */
-    const XML_PATH_RECOMMENDATIONS_ENABLED = 'discovery_suite/recommendations/enabled';
-
-    /**
+     * Constructor
+     *
      * @param Context $context
-     * @param ScopeConfigInterface $scopeConfig
-     * @param Json $jsonSerializer
      * @param RecommendationInterface $recommendationService
+     * @param Data $helper
      * @param CustomerSession $customerSession
-     * @param ProductRepository $productRepository
+     * @param ProductRepositoryInterface $productRepository
+     * @param JsonHelper $jsonHelper
      * @param Registry $registry
      * @param array $data
      */
     public function __construct(
         Context $context,
-        ScopeConfigInterface $scopeConfig,
-        Json $jsonSerializer,
         RecommendationInterface $recommendationService,
+        Data $helper,
         CustomerSession $customerSession,
-        ProductRepository $productRepository,
+        ProductRepositoryInterface $productRepository,
+        JsonHelper $jsonHelper,
         Registry $registry,
         array $data = []
     ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->jsonSerializer = $jsonSerializer;
         $this->recommendationService = $recommendationService;
+        $this->helper = $helper;
         $this->customerSession = $customerSession;
         $this->productRepository = $productRepository;
+        $this->jsonHelper = $jsonHelper;
         $this->registry = $registry;
         parent::__construct($context, $data);
     }
@@ -96,77 +92,11 @@ class Widget extends Template
      */
     public function isEnabled(): bool
     {
-        return $this->scopeConfig->isSetFlag(
-            self::XML_PATH_RECOMMENDATIONS_ENABLED,
-            ScopeInterface::SCOPE_STORE
-        );
+        return $this->helper->isRecommendationsEnabled();
     }
 
     /**
-     * Get widget configuration
-     *
-     * @return string JSON encoded configuration
-     */
-    public function getWidgetConfig(): string
-    {
-        $config = [
-            'enabled' => $this->isEnabled(),
-            'context' => $this->getContext(),
-            'limit' => $this->getLimit(),
-            'layout' => $this->getLayout(),
-            'url' => $this->getRecommendationUrl(),
-            'trackingUrl' => $this->getTrackingUrl(),
-            'productId' => $this->getCurrentProductId(),
-            'customerId' => $this->customerSession->getCustomerId(),
-            'storeId' => $this->_storeManager->getStore()->getId()
-        ];
-
-        return $this->jsonSerializer->serialize($config);
-    }
-
-    /**
-     * Get recommendation context
-     *
-     * @return string
-     */
-    public function getContext(): string
-    {
-        return $this->getData('context') ?: 'homepage';
-    }
-
-    /**
-     * Get recommendation limit
-     *
-     * @return int
-     */
-    public function getLimit(): int
-    {
-        return (int) $this->getData('limit') ?: 12;
-    }
-
-    /**
-     * Get widget layout
-     *
-     * @return string
-     */
-    public function getLayout(): string
-    {
-        return $this->getData('layout') ?: 'grid';
-    }
-
-    /**
-     * Get current product ID if on product page
-     *
-     * @return int|null
-     */
-    public function getCurrentProductId(): ?int
-    {
-        $product = $this->registry->registry('current_product');
-        return $product ? (int) $product->getId() : null;
-    }
-
-    /**
-     * Get recommendations
+     * Get recommendations for current context
      *
      * @return array
      */
@@ -177,108 +107,163 @@ class Widget extends Template
         }
 
         try {
-            $context = $this->getContext();
-            $params = [];
-
-            // Add context-specific parameters
-            if ($context === 'product' && $this->getCurrentProductId()) {
-                $params['product_id'] = $this->getCurrentProductId();
-            }
+            $userId = $this->getUserId();
+            $context = $this->getRecommendationContext();
+            $limit = (int) $this->getData('limit') ?: 12;
 
             $recommendations = $this->recommendationService->getRecommendations(
+                $userId,
                 $context,
-                $params,
-                $this->customerSession->getCustomerId(),
-                null,
-                $this->getLimit()
+                $limit
             );
 
-            return $recommendations['products'] ?? [];
+            return $this->loadProductDetails($recommendations);
 
         } catch (\Exception $e) {
-            $this->_logger->error('Failed to get recommendations', [
-                'context' => $this->getContext(),
+            $this->_logger->error('Recommendations loading failed', [
+                'context' => $this->getRecommendationContext(),
                 'error' => $e->getMessage()
             ]);
-
             return [];
         }
     }
 
     /**
-     * Get recommendation URL
+     * Get similar products for current product
      *
-     * @return string
+     * @return array
      */
-    public function getRecommendationUrl(): string
-    {
-        return $this->getUrl('discoverysuite/recommendations/get');
-    }
-
-    /**
-     * Get tracking URL
-     *
-     * @return string
-     */
-    public function getTrackingUrl(): string
-    {
-        return $this->getUrl('discoverysuite/recommendations/track');
-    }
-
-    /**
-     * Get widget title
-     *
-     * @return string
-     */
-    public function getWidgetTitle(): string
-    {
-        $context = $this->getContext();
-        
-        $titles = [
-            'homepage' => __('Recommended for You'),
-            'product' => __('You May Also Like'),
-            'cart' => __('Complete Your Purchase'),
-            'category' => __('Popular in This Category'),
-            'cross_sell' => __('Frequently Bought Together'),
-            'up_sell' => __('Upgrade Your Choice'),
-            'similar' => __('Similar Products'),
-            'trending' => __('Trending Now')
-        ];
-
-        return (string) ($titles[$context] ?? __('Recommended Products'));
-    }
-
-    /**
-     * Check if should show widget
-     *
-     * @return bool
-     */
-    public function shouldShow(): bool
+    public function getSimilarProducts(): array
     {
         if (!$this->isEnabled()) {
-            return false;
+            return [];
         }
 
-        $context = $this->getContext();
-        $configPath = "discovery_suite/recommendations/{$context}_enabled";
+        $currentProduct = $this->registry->registry('current_product');
+        if (!$currentProduct) {
+            return [];
+        }
 
-        return $this->scopeConfig->isSetFlag(
-            $configPath,
-            ScopeInterface::SCOPE_STORE
-        );
+        try {
+            $limit = (int) $this->getData('limit') ?: 12;
+            $similarProducts = $this->recommendationService->getSimilarProducts(
+                (int) $currentProduct->getId(),
+                $limit
+            );
+
+            return $this->loadProductDetails($similarProducts);
+
+        } catch (\Exception $e) {
+            $this->_logger->error('Similar products loading failed', [
+                'product_id' => $currentProduct->getId(),
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
     }
 
     /**
-     * Get CSS classes for widget
+     * Get widget configuration as JSON
      *
      * @return string
      */
-    public function getCssClasses(): string
+    public function getConfigJson(): string
     {
-        $classes = ['discovery-recommendations-widget'];
-        $classes[] = 'context-' . $this->getContext();
-        $classes[] = 'layout-' . $this->getLayout();
+        $config = [
+            'enabled' => $this->isEnabled(),
+            'userId' => $this->getUserId(),
+            'context' => $this->getRecommendationContext(),
+            'trackingEndpoint' => $this->getUrl('discovery/recommendations/track'),
+            'limit' => (int) $this->getData('limit') ?: 12
+        ];
 
-        return implode(' ', $classes);
+        return $this->jsonHelper->jsonEncode($config);
+    }
+
+    /**
+     * Get user ID for recommendations
+     *
+     * @return string
+     */
+    private function getUserId(): string
+    {
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
+
+        return 'guest_' . $this->customerSession->getSessionId();
+    }
+
+    /**
+     * Get recommendation context
+     *
+     * @return string
+     */
+    private function getRecommendationContext(): string
+    {
+        $context = $this->getData('context');
+        
+        if ($context) {
+            return $context;
+        }
+
+        // Auto-detect context
+        $currentProduct = $this->registry->registry('current_product');
+        if ($currentProduct) {
+            return 'product_view';
+        }
+
+        $currentCategory = $this->registry->registry('current_category');
+        if ($currentCategory) {
+            return 'category_view';
+        }
+
+        return 'homepage';
+    }
+
+    /**
+     * Load full product details for recommendations
+     *
+     * @param array $recommendations
+     * @return array
+     */
+    private function loadProductDetails(array $recommendations): array
+    {
+        $products = [];
+
+        foreach ($recommendations as $recommendation) {
+            try {
+                $productId = $recommendation['product_id'] ?? $recommendation['id'] ?? null;
+                if ($productId) {
+                    $product = $this->productRepository->getById($productId);
+                    $products[] = [
+                        'product' => $product,
+                        'score' => $recommendation['score'] ?? 1.0,
+                        'reason' => $recommendation['reason'] ?? ''
+                    ];
+                }
+            } catch (\Exception $e) {
+                // Skip products that can't be loaded
+                continue;
+            }
+        }
+
+        return $products;
+    }
+
+    /**
+     * Get cache key info
+     *
+     * @return array
+     */
+    public function getCacheKeyInfo()
+    {
+        return [
+            'DISCOVERY_RECOMMENDATIONS',
+            $this->_storeManager->getStore()->getId(),
+            $this->getUserId(),
+            $this->getRecommendationContext(),
+            $this->getData('limit') ?: 12
+        ];
     }
 }

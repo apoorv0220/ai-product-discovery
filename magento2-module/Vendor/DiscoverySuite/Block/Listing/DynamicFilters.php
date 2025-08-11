@@ -13,11 +13,14 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Block\Listing;
 
+use Vendor\DiscoverySuite\Model\Listing\ListingOptimizer;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
-use Vendor\DiscoverySuite\Model\Listing\ListingOptimizer;
+use Magento\Framework\Json\Helper\Data as JsonHelper;
 use Magento\Framework\Registry;
-use Magento\Framework\Serialize\Serializer\Json;
+use Magento\Catalog\Model\Layer\Resolver;
+use Magento\Customer\Model\Session as CustomerSession;
 
 class DynamicFilters extends Template
 {
@@ -27,32 +30,58 @@ class DynamicFilters extends Template
     private $listingOptimizer;
 
     /**
+     * @var Data
+     */
+    private $helper;
+
+    /**
+     * @var JsonHelper
+     */
+    private $jsonHelper;
+
+    /**
      * @var Registry
      */
     private $registry;
 
     /**
-     * @var Json
+     * @var Resolver
      */
-    private $jsonSerializer;
+    private $layerResolver;
 
     /**
+     * @var CustomerSession
+     */
+    private $customerSession;
+
+    /**
+     * Constructor
+     *
      * @param Context $context
      * @param ListingOptimizer $listingOptimizer
+     * @param Data $helper
+     * @param JsonHelper $jsonHelper
      * @param Registry $registry
-     * @param Json $jsonSerializer
+     * @param Resolver $layerResolver
+     * @param CustomerSession $customerSession
      * @param array $data
      */
     public function __construct(
         Context $context,
         ListingOptimizer $listingOptimizer,
+        Data $helper,
+        JsonHelper $jsonHelper,
         Registry $registry,
-        Json $jsonSerializer,
+        Resolver $layerResolver,
+        CustomerSession $customerSession,
         array $data = []
     ) {
         $this->listingOptimizer = $listingOptimizer;
+        $this->helper = $helper;
+        $this->jsonHelper = $jsonHelper;
         $this->registry = $registry;
-        $this->jsonSerializer = $jsonSerializer;
+        $this->layerResolver = $layerResolver;
+        $this->customerSession = $customerSession;
         parent::__construct($context, $data);
     }
 
@@ -63,7 +92,7 @@ class DynamicFilters extends Template
      */
     public function isEnabled(): bool
     {
-        return $this->listingOptimizer->isDynamicFiltersEnabled();
+        return $this->helper->isEnabled() && $this->listingOptimizer->isEnabled();
     }
 
     /**
@@ -78,13 +107,20 @@ class DynamicFilters extends Template
         }
 
         $currentCategory = $this->registry->registry('current_category');
-        $categoryId = $currentCategory ? $currentCategory->getId() : null;
+        if (!$currentCategory) {
+            return [];
+        }
 
         try {
-            return $this->listingOptimizer->getDynamicFilters($categoryId);
+            $context = $this->getFilterContext();
+            return $this->listingOptimizer->getDynamicFilters(
+                (int) $currentCategory->getId(),
+                $context
+            );
+
         } catch (\Exception $e) {
-            $this->_logger->error('Failed to get dynamic filters', [
-                'category_id' => $categoryId,
+            $this->_logger->error('Dynamic filters loading failed', [
+                'category_id' => $currentCategory->getId(),
                 'error' => $e->getMessage()
             ]);
             return [];
@@ -96,89 +132,84 @@ class DynamicFilters extends Template
      *
      * @return string
      */
-    public function getFiltersConfig(): string
+    public function getConfigJson(): string
     {
-        $filters = $this->getDynamicFilters();
-        
         $config = [
-            'filters' => $filters,
             'enabled' => $this->isEnabled(),
-            'category_id' => $this->getCurrentCategoryId(),
-            'ajax_url' => $this->getUrl('discoverysuite/listing/filter')
+            'filters' => $this->getDynamicFilters(),
+            'ajaxUrl' => $this->getUrl('discovery/listing/filters'),
+            'autoApply' => true,
+            'showCounts' => true
         ];
 
-        return $this->jsonSerializer->serialize($config);
+        return $this->jsonHelper->jsonEncode($config);
     }
 
     /**
-     * Get current category ID
-     *
-     * @return int|null
-     */
-    public function getCurrentCategoryId(): ?int
-    {
-        $currentCategory = $this->registry->registry('current_category');
-        return $currentCategory ? (int) $currentCategory->getId() : null;
-    }
-
-    /**
-     * Check if should show filters
-     *
-     * @return bool
-     */
-    public function shouldShow(): bool
-    {
-        return $this->isEnabled() && !empty($this->getDynamicFilters());
-    }
-
-    /**
-     * Get applied filters from request
+     * Get filter context information
      *
      * @return array
      */
-    public function getAppliedFilters(): array
+    private function getFilterContext(): array
     {
-        $applied = [];
-        $request = $this->getRequest();
+        $context = [];
 
-        foreach ($this->getDynamicFilters() as $filter) {
-            $code = $filter['code'] ?? '';
-            $value = $request->getParam($code);
-
-            if (!empty($value)) {
-                $applied[$code] = $value;
+        // Add current applied filters
+        try {
+            $layer = $this->layerResolver->get();
+            $appliedFilters = [];
+            
+            foreach ($layer->getState()->getFilters() as $filter) {
+                $appliedFilters[$filter->getFilter()->getRequestVar()] = $filter->getValue();
             }
+            
+            $context['applied_filters'] = $appliedFilters;
+        } catch (\Exception $e) {
+            // Ignore if layer is not available
         }
 
-        return $applied;
+        // Add search query if in search context
+        $searchQuery = $this->getRequest()->getParam('q');
+        if ($searchQuery) {
+            $context['search_query'] = $searchQuery;
+        }
+
+        // Add user preferences
+        $context['user_id'] = $this->getUserId();
+        $context['store_id'] = $this->_storeManager->getStore()->getId();
+
+        return $context;
     }
 
     /**
-     * Get clear filter URL
+     * Get user ID for personalization
      *
-     * @param string $filterCode
      * @return string
      */
-    public function getClearFilterUrl(string $filterCode): string
+    private function getUserId(): string
     {
-        $params = $this->getRequest()->getParams();
-        unset($params[$filterCode]);
+        if ($this->customerSession->isLoggedIn()) {
+            return 'customer_' . $this->customerSession->getCustomerId();
+        }
 
-        return $this->getUrl('*/*/*', ['_current' => false, '_use_rewrite' => true, '_query' => $params]);
+        return 'guest_' . $this->customerSession->getSessionId();
     }
 
     /**
-     * Get filter value URL
+     * Get cache key info
      *
-     * @param string $filterCode
-     * @param mixed $value
-     * @return string
+     * @return array
      */
-    public function getFilterUrl(string $filterCode, $value): string
+    public function getCacheKeyInfo()
     {
-        $params = $this->getRequest()->getParams();
-        $params[$filterCode] = $value;
-
-        return $this->getUrl('*/*/*', ['_current' => false, '_use_rewrite' => true, '_query' => $params]);
+        $currentCategory = $this->registry->registry('current_category');
+        
+        return [
+            'DISCOVERY_DYNAMIC_FILTERS',
+            $this->_storeManager->getStore()->getId(),
+            $currentCategory ? $currentCategory->getId() : 'no_category',
+            $this->getUserId(),
+            $this->getRequest()->getParam('q', '')
+        ];
     }
 }

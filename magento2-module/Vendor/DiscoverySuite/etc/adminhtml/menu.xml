@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Admin Menu Configuration
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Vendor_DiscoverySuite::discovery_suite" 
+             title="AI Discovery Suite" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="90" 
+             resource="Vendor_DiscoverySuite::discovery_suite"/>
+        
+        <add id="Vendor_DiscoverySuite::dashboard" 
+             title="Dashboard" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="10" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::dashboard"/>
+        
+        <add id="Vendor_DiscoverySuite::search_management" 
+             title="Search Management" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="20" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::search"/>
+        
+        <add id="Vendor_DiscoverySuite::recommendations_management" 
+             title="Recommendations" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="30" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::recommendations"/>
+        
+        <add id="Vendor_DiscoverySuite::merchandising" 
+             title="Merchandising" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="40" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::merchandising"/>
+        
+        <add id="Vendor_DiscoverySuite::shopping_assistant" 
+             title="Shopping Assistant" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="50" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::shopping_assistant"/>
+        
+        <add id="Vendor_DiscoverySuite::analytics_reports" 
+             title="Analytics &amp; Reports" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="60" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::analytics"/>
+        
+        <add id="Vendor_DiscoverySuite::system_tools" 
+             title="System Tools" 
+             module="Vendor_DiscoverySuite" 
+             sortOrder="70" 
+             parent="Vendor_DiscoverySuite::discovery_suite" 
+             resource="Vendor_DiscoverySuite::system"/>
+    </menu>
+</config>

@@ -16,7 +16,7 @@ namespace Vendor\DiscoverySuite\Block\Search;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
 use Vendor\DiscoverySuite\Api\SearchInterface;
-use Vendor\DiscoverySuite\Helper\ConfigHelper;
+use Vendor\DiscoverySuite\Helper\Data;
 use Psr\Log\LoggerInterface;
 
 class Results extends Template
@@ -27,9 +27,9 @@ class Results extends Template
     private $searchService;
 
     /**
-     * @var ConfigHelper
+     * @var Data
      */
-    private $configHelper;
+    private $helper;
 
     /**
      * @var LoggerInterface
@@ -44,19 +44,19 @@ class Results extends Template
     /**
      * @param Context $context
      * @param SearchInterface $searchService
-     * @param ConfigHelper $configHelper
+     * @param Data $helper
      * @param LoggerInterface $logger
      * @param array $data
      */
     public function __construct(
         Context $context,
         SearchInterface $searchService,
-        ConfigHelper $configHelper,
+        Data $helper,
         LoggerInterface $logger,
         array $data = []
     ) {
         $this->searchService = $searchService;
-        $this->configHelper = $configHelper;
+        $this->helper = $helper;
         $this->logger = $logger;
         parent::__construct($context, $data);
     }
@@ -92,7 +92,7 @@ class Results extends Template
             $limit = (int) $this->getRequest()->getParam('limit', 20);
             $offset = (int) $this->getRequest()->getParam('offset', 0);
             
-            return $this->searchService->search($query, null, [], $limit, $offset);
+            return $this->searchService->search($query, $limit, $offset, []);
             
         } catch (\Exception $e) {
             $this->logger->error('Search results block error: ' . $e->getMessage());
@@ -117,7 +117,7 @@ class Results extends Template
      */
     public function isAiSearchEnabled(): bool
     {
-        return $this->configHelper->isSearchEnabled();
+        return $this->helper->isSearchEnabled();
     }
 
     /**
@@ -128,8 +128,8 @@ class Results extends Template
     public function getApiConfig(): array
     {
         return [
-            'search_endpoint' => $this->configHelper->getSearchApiUrl(),
-            'autocomplete_endpoint' => $this->configHelper->getAutocompleteApiUrl(),
+            'search_endpoint' => $this->helper->getServiceUrl('search', '/api/v1/search/'),
+            'autocomplete_endpoint' => $this->helper->getServiceUrl('search', '/api/v1/autocomplete/'),
             'enabled' => $this->isAiSearchEnabled()
         ];
     }

@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * DiscoverySuite Search Results Layout
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <!-- Enhanced Search Results -->
+        <referenceContainer name="content">
+            <block class="Vendor\DiscoverySuite\Block\Search\Results" 
+                   name="discovery.search.results" 
+                   template="Vendor_DiscoverySuite::search/enhanced-results.phtml"
+                   before="search_result_list"/>
+        </referenceContainer>
+        
+        <!-- Search Recommendations -->
+        <referenceContainer name="content">
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Widget" 
+                   name="discovery.recommendations.search" 
+                   template="Vendor_DiscoverySuite::recommendations/search-recommendations.phtml"
+                   after="search_result_list">
+                <arguments>
+                    <argument name="context" xsi:type="string">search_results</argument>
+                    <argument name="limit" xsi:type="number">8</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

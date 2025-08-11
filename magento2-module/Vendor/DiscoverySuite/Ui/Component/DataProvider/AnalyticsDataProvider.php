@@ -13,13 +13,13 @@ declare(strict_types=1);
 
 namespace Vendor\DiscoverySuite\Ui\Component\DataProvider;
 
-use Magento\Framework\Api\Filter;
-use Magento\Framework\Api\FilterBuilder;
+use Vendor\DiscoverySuite\Api\AnalyticsInterface;
+use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\Api\Search\ReportingInterface;
 use Magento\Framework\Api\Search\SearchCriteriaBuilder;
+use Magento\Framework\Api\FilterBuilder;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\View\Element\UiComponent\DataProvider\DataProvider;
-use Vendor\DiscoverySuite\Api\AnalyticsInterface;
 
 class AnalyticsDataProvider extends DataProvider
 {
@@ -29,6 +29,13 @@ class AnalyticsDataProvider extends DataProvider
     private $analyticsService;
 
     /**
+     * @var Data
+     */
+    private $helper;
+
+    /**
+     * Constructor
+     *
      * @param string $name
      * @param string $primaryFieldName
      * @param string $requestFieldName
@@ -37,6 +44,7 @@ class AnalyticsDataProvider extends DataProvider
      * @param RequestInterface $request
      * @param FilterBuilder $filterBuilder
      * @param AnalyticsInterface $analyticsService
+     * @param Data $helper
      * @param array $meta
      * @param array $data
      */
@@ -49,6 +57,7 @@ class AnalyticsDataProvider extends DataProvider
         RequestInterface $request,
         FilterBuilder $filterBuilder,
         AnalyticsInterface $analyticsService,
+        Data $helper,
         array $meta = [],
         array $data = []
     ) {
@@ -64,6 +73,7 @@ class AnalyticsDataProvider extends DataProvider
             $data
         );
         $this->analyticsService = $analyticsService;
+        $this->helper = $helper;
     }
 
     /**
@@ -71,71 +81,85 @@ class AnalyticsDataProvider extends DataProvider
      *
      * @return array
      */
-    public function getData(): array
+    public function getData()
     {
-        try {
-            // Get analytics data from service
-            $analyticsData = $this->analyticsService->getDashboardData('week');
-            
-            // Transform data for UI component
-            $items = [];
-            if (isset($analyticsData['events']) && is_array($analyticsData['events'])) {
-                foreach ($analyticsData['events'] as $event) {
-                    $items[] = [
-                        'id' => $event['id'] ?? '',
-                        'event_type' => $event['event_type'] ?? '',
-                        'user_id' => $event['user_id'] ?? '',
-                        'session_id' => $event['session_id'] ?? '',
-                        'store_id' => $event['store_id'] ?? '',
-                        'page_url' => $event['page_url'] ?? '',
-                        'device_type' => $event['device_type'] ?? '',
-                        'created_at' => $event['created_at'] ?? ''
-                    ];
-                }
-            }
-
-            return [
-                'totalRecords' => count($items),
-                'items' => $items
-            ];
-
-        } catch (\Exception $e) {
+        if (!$this->helper->isAnalyticsEnabled()) {
             return [
                 'totalRecords' => 0,
                 'items' => []
             ];
         }
+
+        try {
+            // Get date range from request
+            $dateFrom = $this->request->getParam('date_from', date('Y-m-d', strtotime('-30 days')));
+            $dateTo = $this->request->getParam('date_to', date('Y-m-d'));
+            
+            // Get filters
+            $filters = $this->getFilters();
+
+            // Get dashboard data from analytics service
+            $analyticsData = $this->analyticsService->getDashboardData($dateFrom, $dateTo, $filters);
+
+            return $this->formatDataForGrid($analyticsData);
+
+        } catch (\Exception $e) {
+            return [
+                'totalRecords' => 0,
+                'items' => [],
+                'errorMessage' => $e->getMessage()
+            ];
+        }
     }
 
     /**
-     * Get meta data
+     * Get filters from request
      *
      * @return array
      */
-    public function getMeta(): array
+    private function getFilters(): array
     {
-        $meta = parent::getMeta();
-        
-        // Add custom meta data for analytics dashboard
-        $meta['discovery_analytics_columns']['children']['summary'] = [
-            'arguments' => [
-                'data' => [
-                    'config' => [
-                        'componentType' => 'container',
-                        'component' => 'Vendor_DiscoverySuite/js/dashboard/summary',
-                        'displayArea' => 'dataGridFilters',
-                        'dataScope' => '',
-                        'label' => __('Analytics Summary'),
-                        'provider' => $this->name,
-                        'deps' => $this->name,
-                        'imports' => [
-                            'totalRecords' => '${ $.provider }:data.totalRecords'
-                        ]
-                    ]
-                ]
-            ]
-        ];
+        $filters = [];
 
-        return $meta;
+        if ($storeId = $this->request->getParam('store_id')) {
+            $filters['store_id'] = $storeId;
+        }
+
+        if ($eventType = $this->request->getParam('event_type')) {
+            $filters['event_type'] = $eventType;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * Format analytics data for grid display
+     *
+     * @param array $analyticsData
+     * @return array
+     */
+    private function formatDataForGrid(array $analyticsData): array
+    {
+        $items = [];
+
+        if (isset($analyticsData['events'])) {
+            foreach ($analyticsData['events'] as $index => $event) {
+                $items[] = [
+                    'id' => $index + 1,
+                    'event_type' => $event['event_type'] ?? '',
+                    'count' => $event['count'] ?? 0,
+                    'conversion_rate' => isset($event['conversion_rate']) ? 
+                        number_format($event['conversion_rate'] * 100, 2) . '%' : 'N/A',
+                    'revenue' => isset($event['revenue']) ? 
+                        '$' . number_format($event['revenue'], 2) : 'N/A',
+                    'date' => $event['date'] ?? date('Y-m-d')
+                ];
+            }
+        }
+
+        return [
+            'totalRecords' => count($items),
+            'items' => $items
+        ];
     }
 }
