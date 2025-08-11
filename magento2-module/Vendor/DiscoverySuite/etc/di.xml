@@ -40,6 +40,28 @@
     
     <virtualType name="DiscoverySuiteListingClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
         <arguments>
+            <argument name="baseUri" xsi:type="string">analytics-service</argument>
+            <argument name="defaultPort" xsi:type="string">7003</argument>
+        </arguments>
+    </virtualType>
+    
+    <virtualType name="DiscoverySuiteAssistantClient" type="Vendor\DiscoverySuite\Model\Api\HttpClient">
+        <arguments>
+            <argument name="baseUri" xsi:type="string">shopping-assistant</argument>
+            <argument name="defaultPort" xsi:type="string">7004</argument>
+        </arguments>
+    </virtualType>
+    
+    <!-- Console Commands -->
+    <type name="Magento\Framework\Console\CommandList">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="discoveryTestConnection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
+                <item name="discoverySyncCatalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
+                <item name="discoveryTestAdvancedAi" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestAdvancedAi</item>
+            </argument>
+        </arguments>
+    </type><arguments>
             <argument name="baseUri" xsi:type="string">listing-optimizer</argument>
             <argument name="defaultPort" xsi:type="string">7003</argument>
         </arguments>

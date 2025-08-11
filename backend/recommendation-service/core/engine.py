@@ -18,6 +18,7 @@ import json
 
 from shared.config.redis import get_redis_client
 from shared.database.base import get_database_session
+from .ml_engine import advanced_ml_engine
 
 logger = structlog.get_logger()
 
@@ -34,10 +35,10 @@ class RecommendationEngine:
             "hybrid": self._hybrid_recommendations,
             "trending": self._trending_products,
             "similar": self._similar_products
-        }
+                }
         
     async def initialize(self):
-        """Initialize the recommendation engine"""
+        """Initialize the recommendation engine with ML capabilities"""
         try:
             # Try to connect to Redis - make it optional
             try:
@@ -47,8 +48,15 @@ class RecommendationEngine:
                 logger.warning("Redis connection failed, continuing without cache", error=str(e))
                 self.redis_client = None
             
+            # Initialize ML engine
+            try:
+                await advanced_ml_engine.initialize()
+                logger.info("Advanced ML engine initialized")
+            except Exception as e:
+                logger.warning("ML engine initialization failed, using basic algorithms", error=str(e))
+            
             # Database connection is already handled gracefully in init_database
-            logger.info("Recommendation engine initialized")
+            logger.info("Recommendation engine initialized with ML capabilities")
             
         except Exception as e:
             logger.error("Failed to initialize recommendation engine", error=str(e))
@@ -141,6 +149,84 @@ class RecommendationEngine:
             logger.error("Error generating recommendations", error=str(e))
             # Return fallback recommendations
             return await self._fallback_recommendations(limit)
+    
+    async def train_ml_models(self) -> None:
+        """Train ML models with latest data from database"""
+        try:
+            logger.info("Starting ML model training")
+            
+            # Load data from database
+            from shared.models.product import Product
+            from shared.models.recommendation import CollaborativeFiltering
+            from shared.database.base import get_database_session
+            from sqlalchemy import select
+            
+            async with get_database_session() as session:
+                # Load products
+                product_query = select(Product).where(Product.status == 1)
+                product_result = await session.execute(product_query)
+                products = product_result.scalars().all()
+                
+                # Convert to ML format
+                products_data = []
+                for product in products:
+                    products_data.append({
+                        'id': product.id,
+                        'name': product.name,
+                        'description': product.description or '',
+                        'categories': product.category_ids or [],
+                        'brand': product.attributes.get('brand', '') if product.attributes else '',
+                        'price': product.price or 0,
+                        'attributes': product.attributes or {},
+                        'view_count': product.view_count or 0,
+                        'avg_rating': product.avg_rating or 0,
+                        'purchase_count': product.purchase_count or 0
+                    })
+                
+                # Load interactions
+                interaction_query = select(CollaborativeFiltering)
+                interaction_result = await session.execute(interaction_query)
+                interactions = interaction_result.scalars().all()
+                
+                # Convert to ML format
+                interactions_data = []
+                for interaction in interactions:
+                    interactions_data.append({
+                        'user_id': str(interaction.user_id),
+                        'product_id': str(interaction.product_id),
+                        'rating': interaction.implicit_rating,
+                        'timestamp': interaction.updated_at.isoformat() if interaction.updated_at else datetime.utcnow().isoformat()
+                    })
+                
+                # Train ML models
+                await advanced_ml_engine.train_models(interactions_data, products_data)
+                
+                logger.info("ML model training completed", 
+                           products_count=len(products_data),
+                           interactions_count=len(interactions_data))
+                
+        except Exception as e:
+            logger.error("Error training ML models", error=str(e))
+    
+    async def record_user_interaction(self, user_id: str, product_id: str, 
+                                    interaction_type: str, rating: float = None,
+                                    context: Dict[str, Any] = None) -> None:
+        """Record user interaction for real-time learning"""
+        try:
+            await advanced_ml_engine.record_interaction(
+                user_id=user_id,
+                product_id=product_id,
+                interaction_type=interaction_type,
+                rating=rating,
+                context=context
+            )
+            
+            logger.info("User interaction recorded", 
+                       user_id=user_id, product_id=product_id, 
+                       interaction_type=interaction_type)
+            
+        except Exception as e:
+            logger.error("Error recording user interaction", error=str(e))
     
     async def get_similar_products(
         self,

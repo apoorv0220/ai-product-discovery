@@ -1,6 +1,6 @@
 <?php
 /**
- * DiscoverySuite Shopping Assistant Interface
+ * DiscoverySuite Assistant Interface
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -14,37 +14,41 @@ namespace Vendor\DiscoverySuite\Api;
 interface AssistantInterface
 {
     /**
-     * Start chat session
+     * Send message to conversational AI assistant
+     *
+     * @param string $message
+     * @param string $sessionId
+     * @param string|null $userId
+     * @param array $contextData
+     * @return array
+     */
+    public function chat(string $message, string $sessionId, ?string $userId = null, array $contextData = []): array;
+
+    /**
+     * Record user interaction for ML learning
      *
      * @param string $userId
+     * @param string $productId
+     * @param string $interactionType
      * @param array $context
-     * @return array
+     * @return bool
      */
-    public function startSession(string $userId, array $context = []): array;
+    public function recordInteraction(string $userId, string $productId, string $interactionType, array $context = []): bool;
 
     /**
-     * Send message to assistant
+     * Get conversation history
      *
      * @param string $sessionId
-     * @param string $message
-     * @param array $context
+     * @param string|null $userId
      * @return array
      */
-    public function sendMessage(string $sessionId, string $message, array $context = []): array;
+    public function getConversationHistory(string $sessionId, ?string $userId = null): array;
 
     /**
-     * End chat session
+     * Clear conversation session
      *
      * @param string $sessionId
      * @return bool
      */
-    public function endSession(string $sessionId): bool;
-
-    /**
-     * Get session history
-     *
-     * @param string $sessionId
-     * @return array
-     */
-    public function getSessionHistory(string $sessionId): array;
+    public function clearSession(string $sessionId): bool;
 }

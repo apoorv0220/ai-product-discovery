@@ -104,24 +104,98 @@ class AutocompleteRequest(BaseModel):
 
 
 async def _process_autocomplete_request(q: str, limit: int = 10):
-    """Internal function to process autocomplete requests"""
+    """Internal function to process autocomplete requests with NLP enhancement"""
     try:
-        logger.info("Getting autocomplete suggestions", query=q)
+        logger.info("Getting NLP-enhanced autocomplete suggestions", query=q)
         
-        # Get real suggestions from indexed products
-        suggestions_data = get_autocomplete_suggestions(q, limit)
+        # Try NLP-enhanced autocomplete first
+        try:
+            from ..core.nlp_processor import AdvancedNLPProcessor
+            nlp_processor = AdvancedNLPProcessor()
+            
+            # Process query for typos and intent
+            intent, corrections = await nlp_processor.process_search_query(q)
+            
+            # Use corrected query if available
+            processed_query = intent.processed_query if intent else q
+            
+            # Get suggestions using processed query
+            suggestions_data = get_autocomplete_suggestions(processed_query, limit)
+            
+            # If original query had typos, add correction info
+            if corrections and corrections[0].corrected != q:
+                original_suggestions = get_autocomplete_suggestions(q, limit//2)
+                corrected_suggestions = get_autocomplete_suggestions(corrections[0].corrected, limit//2)
+                
+                # Merge suggestions and mark corrected ones
+                all_suggestions_data = []
+                
+                # Add original suggestions
+                for item in original_suggestions:
+                    item['is_corrected'] = False
+                    item['original_query'] = q
+                    all_suggestions_data.append(item)
+                
+                # Add corrected suggestions
+                for item in corrected_suggestions:
+                    item['is_corrected'] = True
+                    item['corrected_from'] = q
+                    item['correction_confidence'] = corrections[0].confidence
+                    all_suggestions_data.append(item)
+                
+                # Remove duplicates and limit results
+                seen = set()
+                unique_suggestions = []
+                for item in all_suggestions_data:
+                    if item['suggestion'] not in seen:
+                        seen.add(item['suggestion'])
+                        unique_suggestions.append(item)
+                
+                suggestions_data = unique_suggestions[:limit]
+            
+            # Add NLP metadata
+            for item in suggestions_data:
+                item['nlp_enhanced'] = True
+                if intent:
+                    item['intent_type'] = intent.intent_type
+                    item['intent_confidence'] = intent.confidence
+            
+            logger.info("NLP-enhanced autocomplete processed", 
+                       query=q, 
+                       processed_query=processed_query,
+                       suggestions_count=len(suggestions_data),
+                       corrections_count=len(corrections))
+            
+        except Exception as nlp_error:
+            logger.warning("NLP processing failed, using basic autocomplete", error=str(nlp_error))
+            # Fallback to basic autocomplete
+            suggestions_data = get_autocomplete_suggestions(q, limit)
+            for item in suggestions_data:
+                item['nlp_enhanced'] = False
         
         # Convert to response format
-        suggestions = [
-            AutocompleteResult(
+        suggestions = []
+        for item in suggestions_data:
+            # Create the basic AutocompleteResult
+            suggestion_obj = AutocompleteResult(
                 suggestion=item['suggestion'],
                 type=item['type'],
                 count=item['count']
             )
-            for item in suggestions_data
-        ]
+            
+            # Add additional metadata as extra fields
+            if 'nlp_enhanced' in item:
+                suggestion_obj.__dict__['nlp_enhanced'] = item['nlp_enhanced']
+            if 'is_corrected' in item:
+                suggestion_obj.__dict__['is_corrected'] = item['is_corrected']
+            if 'corrected_from' in item:
+                suggestion_obj.__dict__['corrected_from'] = item['corrected_from']
+            if 'intent_type' in item:
+                suggestion_obj.__dict__['intent_type'] = item['intent_type']
+                
+            suggestions.append(suggestion_obj)
         
-        logger.info("Returning autocomplete suggestions", query=q, count=len(suggestions))
+        logger.info("Returning enhanced autocomplete suggestions", query=q, count=len(suggestions))
         
         return AutocompleteResponse(
             suggestions=suggestions,

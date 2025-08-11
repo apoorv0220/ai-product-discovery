@@ -89,6 +89,55 @@ class RecommendationService implements RecommendationInterface
 
             $response = $this->httpClient->post($endpoint, $requestData);
             
+            // Process ML-powered recommendations response
+            if ($response && isset($response['recommendations'])) {
+                $metadata = $response['recommendation_metadata'] ?? [];
+                
+                // Add ML insights to each recommendation
+                foreach ($response['recommendations'] as &$recommendation) {
+                    // Mark as ML-powered if available
+                    $recommendation['ml_powered'] = $recommendation['ml_powered'] ?? false;
+                    $recommendation['personalized'] = $recommendation['personalized'] ?? false;
+                    $recommendation['algorithm_used'] = $recommendation['algorithm'] ?? 'unknown';
+                    $recommendation['confidence_score'] = $recommendation['confidence'] ?? 0.8;
+                    
+                    // Add user-friendly reason
+                    if (empty($recommendation['reason'])) {
+                        $recommendation['reason'] = $this->generateReasonText(
+                            $recommendation['algorithm_used'],
+                            $recommendation['personalized']
+                        );
+                    }
+                    
+                    // Ensure Magento compatibility
+                    $recommendation['product_id'] = $recommendation['product_id'] ?? $recommendation['sku'] ?? '';
+                    $recommendation['name'] = $recommendation['name'] ?? $recommendation['title'] ?? '';
+                    $recommendation['image_url'] = $recommendation['image_url'] ?? '';
+                    $recommendation['url'] = $recommendation['url'] ?? '';
+                    $recommendation['price'] = $recommendation['price'] ?? 0;
+                }
+                
+                // Add overall ML metadata
+                $response['ml_insights'] = [
+                    'ml_powered' => $metadata['ml_powered'] ?? false,
+                    'personalized' => $metadata['personalized'] ?? false,
+                    'algorithms_used' => $metadata['algorithms_used'] ?? [],
+                    'avg_confidence' => $metadata['avg_confidence'] ?? 0.8,
+                    'real_time_learning' => $this->helper->isRealTimeLearningEnabled(),
+                    'collaborative_filtering' => $this->helper->isCollaborativeFilteringEnabled(),
+                    'content_based' => $this->helper->isContentBasedEnabled()
+                ];
+                
+                $this->logger->info('ML recommendations processed', [
+                    'user_id' => $userId,
+                    'context' => $context,
+                    'count' => count($response['recommendations']),
+                    'ml_powered' => $metadata['ml_powered'] ?? false
+                ]);
+                
+                return $response;
+            }
+            
             return $response['recommendations'] ?? [];
 
         } catch (\Exception $e) {
@@ -133,6 +182,32 @@ class RecommendationService implements RecommendationInterface
             return [];
         }
     }
+
+    /**
+     * Generate user-friendly reason text for recommendations
+     *
+     * @param string $algorithm
+     * @param bool $personalized
+     * @return string
+     */
+    private function generateReasonText(string $algorithm, bool $personalized): string
+    {
+        $reasons = [
+            'collaborative_filtering' => $personalized 
+                ? 'Customers with similar tastes also liked this'
+                : 'Popular among customers with similar preferences',
+            'content_based' => 'Similar products based on features and attributes',
+            'hybrid' => $personalized 
+                ? 'Personally recommended based on your preferences'
+                : 'Recommended based on advanced AI analysis',
+            'popularity' => 'Popular among all customers',
+            'trending' => 'Trending product right now',
+            'similar' => 'Similar to products you viewed'
+        ];
+
+        return $reasons[$algorithm] ?? ($personalized ? 'Personally recommended for you' : 'Recommended product');
+    }
+}
 
     /**
      * Track user interaction

@@ -77,6 +77,46 @@ class SearchService implements SearchInterface
 
             $response = $this->httpClient->post($endpoint, $requestData);
             
+            // Process advanced AI response
+            if ($response && isset($response['results'])) {
+                // Extract NLP insights if available
+                $nlpInsights = $response['search_metadata'] ?? [];
+                
+                // Add AI enhancement metadata to each result
+                foreach ($response['results'] as &$result) {
+                    // Mark results as AI-enhanced
+                    $result['ai_enhanced'] = true;
+                    $result['nlp_enabled'] = $nlpInsights['nlp_enabled'] ?? false;
+                    $result['semantic_search'] = $nlpInsights['semantic_search'] ?? false;
+                    $result['typo_corrected'] = $nlpInsights['typo_corrected'] ?? false;
+                }
+                
+                // Add user-friendly AI messages
+                if (!empty($nlpInsights['corrections'])) {
+                    $correction = $nlpInsights['corrections'][0] ?? [];
+                    if (isset($correction['original']) && isset($correction['corrected'])) {
+                        $response['ai_message'] = sprintf(
+                            'Showing results for "%s" instead of "%s"',
+                            $correction['corrected'],
+                            $correction['original']
+                        );
+                    }
+                }
+                
+                if (!empty($nlpInsights['intent']['type'])) {
+                    $intentMessages = [
+                        'buy' => 'Found products you can purchase right now',
+                        'compare' => 'Here are products to compare',
+                        'browse' => 'Showing products to browse'
+                    ];
+                    
+                    $intent = $nlpInsights['intent']['type'];
+                    if (isset($intentMessages[$intent])) {
+                        $response['intent_message'] = $intentMessages[$intent];
+                    }
+                }
+            }
+            
             return $response ?? [];
 
         } catch (\Exception $e) {
@@ -104,12 +144,39 @@ class SearchService implements SearchInterface
         try {
             $endpoint = $this->helper->getServiceUrl('search', '/api/v1/autocomplete/');
             
-            $requestData = [
-                'query' => $query,
+            // Use GET request with query parameters (as per your API)
+            $response = $this->httpClient->get($endpoint, [
+                'q' => $query,
                 'limit' => $limit
-            ];
-
-            $response = $this->httpClient->post($endpoint, $requestData);
+            ]);
+            
+            // Process NLP-enhanced autocomplete response
+            if ($response && isset($response['suggestions'])) {
+                $metadata = $response['autocomplete_metadata'] ?? [];
+                
+                // Add AI enhancement flags to suggestions
+                foreach ($response['suggestions'] as &$suggestion) {
+                    $suggestion['ai_enhanced'] = $suggestion['nlp_enhanced'] ?? false;
+                    $suggestion['has_typo_correction'] = $suggestion['is_corrected'] ?? false;
+                    
+                    // Add user-friendly indicators
+                    if ($suggestion['has_typo_correction']) {
+                        $suggestion['correction_note'] = sprintf(
+                            'Did you mean "%s"?',
+                            $suggestion['suggestion']
+                        );
+                    }
+                }
+                
+                // Add metadata about AI processing
+                $response['ai_metadata'] = [
+                    'nlp_processing' => $metadata['nlp_processing'] ?? false,
+                    'typo_corrections' => $metadata['typo_corrections'] ?? 0,
+                    'intent_detection' => $metadata['intent_detection'] ?? false
+                ];
+                
+                return $response;
+            }
             
             return $response['suggestions'] ?? [];
 
