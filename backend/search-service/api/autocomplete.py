@@ -50,15 +50,24 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
     for product_id, product in products.items():
         product_name = product.get('name', '')
         if query_lower in product_name.lower():
+            # Format price for display
+            price = product.get('price', 0)
+            currency = product.get('currency', 'USD')
+            formatted_price = f"{currency} {price:.2f}" if price else ""
+            
             suggestions.append({
                 'suggestion': product_name,
+                'title': product_name,  # Add title field for frontend
                 'type': 'product',
                 'count': 1,  # In a real system, this would be stock quantity or popularity
                 'product_id': product.get('id'),
-                'price': product.get('price'),
-                'currency': product.get('currency', 'USD'),
-                'image_url': product.get('image_url', ''),
-                'url': product.get('url', '')
+                'price': formatted_price,  # Formatted price for display
+                'raw_price': price,  # Keep raw price for sorting
+                'currency': currency,
+                'image': product.get('image_url', ''),  # Map image_url to image
+                'image_url': product.get('image_url', ''),  # Keep original for compatibility
+                'url': product.get('url', ''),
+                'categories': product.get('categories', [])
             })
     
     # Sort by relevance (how close the match is to the beginning of the name)

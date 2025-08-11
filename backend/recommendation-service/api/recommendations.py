@@ -148,7 +148,7 @@ async def get_similar_products(
         recommendation_items = [
             RecommendationItem(
                 product_id=item["product_id"],
-                score=item["similarity_score"],
+                score=item.get("similarity_score", item.get("score", 0.5)),  # Handle both field names
                 reason=f"Similar to {product_id}",
                 metadata=item.get("metadata", {})
             )

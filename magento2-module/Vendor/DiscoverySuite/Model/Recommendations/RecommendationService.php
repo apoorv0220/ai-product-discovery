@@ -68,11 +68,23 @@ class RecommendationService implements RecommendationInterface
         try {
             $endpoint = $this->helper->getServiceUrl('recommendation', '/api/v1/recommendations/');
             
+            // Map Magento contexts to API contexts
+            $contextMap = [
+                'product_view' => 'product_view',
+                'category_view' => 'category_view', 
+                'homepage' => 'home',
+                'cart' => 'cart',
+                'checkout' => 'checkout',
+                'search' => 'search',
+                'wishlist' => 'wishlist'
+            ];
+            $apiContext = $contextMap[$context] ?? $context;
+            
             $requestData = [
                 'user_id' => $userId,
-                'context' => $context,
+                'context' => $apiContext,
                 'limit' => $limit,
-                'filters' => $filters
+                'filters' => is_array($filters) && !empty($filters) ? $filters : (object)[] // Ensure object, not array
             ];
 
             $response = $this->httpClient->post($endpoint, $requestData);

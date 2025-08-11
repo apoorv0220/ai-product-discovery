@@ -1,12 +1,20 @@
 /**
  * AI Discovery Suite Frontend JavaScript
  */
-define([
-    'jquery',
-    'mage/url',
-    'mage/storage',
-    'mage/cookies'
-], function ($, url, storage, cookies) {
+(function (factory) {
+    if (typeof define === 'function' && define.amd) {
+        // AMD
+        define('discoveryMain', [
+            'jquery',
+            'mage/url',
+            'mage/storage',
+            'mage/cookies'
+        ], factory);
+    } else {
+        // Browser globals
+        window.DiscoveryMain = factory(jQuery, mage.url, mage.storage, mage.cookies);
+    }
+}(function ($, url, storage, cookies) {
     'use strict';
 
     var DiscoveryMain = {
@@ -135,24 +143,44 @@ define([
         displayAutocompleteResults: function (suggestions, container) {
             var html = '';
             
+            if (!suggestions || suggestions.length === 0) {
+                html = '<div class="discovery-autocomplete-no-results">No suggestions found</div>';
+                container.html(html).show();
+                return;
+            }
+            
             suggestions.forEach(function (suggestion, index) {
-                html += '<div class="discovery-autocomplete-item" data-index="' + index + '">';
+                // Handle different field name possibilities
+                var title = suggestion.title || suggestion.suggestion || suggestion.name || 'Product';
+                var image = suggestion.image || suggestion.image_url || '';
+                var price = suggestion.price || '';
+                var url = suggestion.url || '#';
                 
-                if (suggestion.image) {
-                    html += '<img src="' + suggestion.image + '" class="discovery-autocomplete-image" alt="' + suggestion.title + '">';
+                html += '<div class="discovery-autocomplete-item" data-index="' + index + '" data-url="' + url + '">';
+                
+                if (image) {
+                    html += '<img src="' + image + '" class="discovery-autocomplete-image" alt="' + title + '" onerror="this.style.display=\'none\'">';
                 }
                 
                 html += '<div class="discovery-autocomplete-details">';
-                html += '<div class="discovery-autocomplete-title">' + suggestion.title + '</div>';
+                html += '<div class="discovery-autocomplete-title">' + title + '</div>';
                 
-                if (suggestion.price) {
-                    html += '<div class="discovery-autocomplete-price">' + suggestion.price + '</div>';
+                if (price) {
+                    html += '<div class="discovery-autocomplete-price">' + price + '</div>';
                 }
                 
                 html += '</div></div>';
             });
             
             container.html(html).show();
+            
+            // Add click handlers for navigation
+            container.find('.discovery-autocomplete-item').on('click', function() {
+                var url = $(this).data('url');
+                if (url && url !== '#') {
+                    window.location.href = url;
+                }
+            });
         },
 
         /**
@@ -350,6 +378,6 @@ define([
         }
     };
 
-    // Return the module for RequireJS
+    // Return the module
     return DiscoveryMain;
-});
+}));

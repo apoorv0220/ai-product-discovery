@@ -18,9 +18,11 @@ class RecommendationContext(str, Enum):
     """Recommendation context types"""
     HOME = "home"
     PRODUCT_DETAIL = "product_detail"
+    PRODUCT_VIEW = "product_view"  # Alternative for product_detail
     CART = "cart"
     CHECKOUT = "checkout"
     CATEGORY = "category"
+    CATEGORY_VIEW = "category_view"  # Alternative for category
     SEARCH = "search"
     WISHLIST = "wishlist"
     RECENTLY_VIEWED = "recently_viewed"
