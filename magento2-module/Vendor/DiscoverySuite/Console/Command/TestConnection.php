@@ -168,33 +168,7 @@ class TestConnection extends Command
      */
     private function testService(array $config): array
     {
-        $startTime = microtime(true);
-        
-        try {
-            $response = $this->httpClient->get($config['url']);
-            $responseTime = round((microtime(true) - $startTime) * 1000);
-            
-            if (!empty($response['status']) && $response['status'] === 'healthy') {
-                return [
-                    'status' => true,
-                    'response_time' => $responseTime,
-                    'message' => 'Service is healthy'
-                ];
-            } else {
-                return [
-                    'status' => false,
-                    'response_time' => $responseTime,
-                    'message' => 'Service returned unhealthy status'
-                ];
-            }
-            
-        } catch (\Exception $e) {
-            $responseTime = round((microtime(true) - $startTime) * 1000);
-            return [
-                'status' => false,
-                'response_time' => $responseTime,
-                'message' => 'Connection failed: ' . $e->getMessage()
-            ];
-        }
+        // Use the new testConnectionToUrl method that handles mixed HTTP/HTTPS properly
+        return $this->httpClient->testConnectionToUrl($config['url']);
     }
 }

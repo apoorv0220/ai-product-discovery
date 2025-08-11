@@ -185,17 +185,30 @@ class ReindexSearch extends Command
      */
     private function reindexSearchData(int $storeId, OutputInterface $output): int
     {
-        $reindexedCount = 0;
-        
-        // This is a placeholder - in a real implementation, you would:
-        // 1. Load products, categories, and other searchable content
-        // 2. Format them for the search index
-        // 3. Send them to the search service
-        // 4. Update search configurations and synonyms
-        
-        $output->writeln('<comment>Search reindex functionality to be implemented based on your search requirements.</comment>');
-        $output->writeln('<comment>This command will reindex data for: ' . $this->helper->getApiBaseUrl() . ':' . $this->helper->getSearchServicePort() . '/api/v1/index/</comment>');
-        
-        return $reindexedCount;
+        try {
+            $output->writeln('<info>Rebuilding search index...</info>');
+            
+            // Call the rebuild index endpoint
+            $rebuildEndpoint = '/api/v1/index/rebuild';
+            $response = $this->httpClient->post($rebuildEndpoint, [
+                'store_id' => $storeId,
+                'timestamp' => time()
+            ]);
+            
+            if (isset($response['success']) && $response['success']) {
+                $output->writeln('<info>Search index rebuild initiated successfully!</info>');
+                $output->writeln('<comment>The search service is rebuilding the index in the background.</comment>');
+                $output->writeln('<comment>This may take a few minutes depending on your catalog size.</comment>');
+                return 1; // Indicate success
+            } else {
+                $error = isset($response['message']) ? $response['message'] : 'Unknown error';
+                $output->writeln("<error>Failed to rebuild index: {$error}</error>");
+                return 0;
+            }
+            
+        } catch (\Exception $e) {
+            $output->writeln('<error>Error during search reindex: ' . $e->getMessage() . '</error>');
+            return 0;
+        }
     }
 }

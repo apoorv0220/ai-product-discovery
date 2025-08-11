@@ -70,6 +70,25 @@
         </arguments>
     </type>
     
+    <!-- Console Command Dependencies -->
+    <type name="Vendor\DiscoverySuite\Console\Command\SyncCatalog">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Console\Command\TestConnection">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+    
+    <type name="Vendor\DiscoverySuite\Console\Command\ReindexSearch">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+    
     <!-- Plugin Configuration - Will be enabled when needed -->
     <!--
     <type name="Magento\CatalogSearch\Model\ResourceModel\Fulltext\Collection">

@@ -17,6 +17,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Magento\Framework\App\State;
 use Magento\Framework\App\Area;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
+use Magento\Catalog\Model\Product\Visibility;
+use Magento\Catalog\Model\Product\Attribute\Source\Status;
+use Magento\Store\Model\StoreManagerInterface;
+use Magento\Catalog\Helper\Image;
+use Magento\Framework\Pricing\Helper\Data as PriceHelper;
+use Magento\CatalogInventory\Api\StockRegistryInterface;
 use Vendor\DiscoverySuite\Helper\Data;
 use Vendor\DiscoverySuite\Model\Api\HttpClient;
 
@@ -41,22 +48,62 @@ class SyncCatalog extends Command
     private $httpClient;
 
     /**
+     * @var CollectionFactory
+     */
+    private $productCollectionFactory;
+
+    /**
+     * @var StoreManagerInterface
+     */
+    private $storeManager;
+
+    /**
+     * @var Image
+     */
+    private $imageHelper;
+
+    /**
+     * @var PriceHelper
+     */
+    private $priceHelper;
+
+    /**
+     * @var StockRegistryInterface
+     */
+    private $stockRegistry;
+
+    /**
      * Constructor
      *
      * @param State $appState
      * @param Data $helper
      * @param HttpClient $httpClient
+     * @param CollectionFactory $productCollectionFactory
+     * @param StoreManagerInterface $storeManager
+     * @param Image $imageHelper
+     * @param PriceHelper $priceHelper
+     * @param StockRegistryInterface $stockRegistry
      * @param string|null $name
      */
     public function __construct(
         State $appState,
         Data $helper,
         HttpClient $httpClient,
+        CollectionFactory $productCollectionFactory,
+        StoreManagerInterface $storeManager,
+        Image $imageHelper,
+        PriceHelper $priceHelper,
+        StockRegistryInterface $stockRegistry,
         string $name = null
     ) {
         $this->appState = $appState;
         $this->helper = $helper;
         $this->httpClient = $httpClient;
+        $this->productCollectionFactory = $productCollectionFactory;
+        $this->storeManager = $storeManager;
+        $this->imageHelper = $imageHelper;
+        $this->priceHelper = $priceHelper;
+        $this->stockRegistry = $stockRegistry;
         parent::__construct($name);
     }
 
@@ -164,16 +211,192 @@ class SyncCatalog extends Command
     private function syncProducts(int $batchSize, int $storeId, OutputInterface $output): int
     {
         $totalSynced = 0;
+        $page = 1;
         
-        // This is a placeholder - in a real implementation, you would:
-        // 1. Load products from Magento catalog
-        // 2. Format them for the API
-        // 3. Send them to the search service indexing endpoint
-        // 4. Handle any errors and retry logic
-        
-        $output->writeln('<comment>Product sync functionality to be implemented based on your catalog structure.</comment>');
-        $output->writeln('<comment>This command will sync products to: ' . $this->helper->getApiBaseUrl() . ':' . $this->helper->getSearchServicePort() . '/api/v1/index/</comment>');
+        try {
+            // Set store scope
+            $this->storeManager->setCurrentStore($storeId);
+            $store = $this->storeManager->getStore($storeId);
+            
+            $output->writeln('<info>Loading products from store: ' . $store->getName() . '</info>');
+            
+            do {
+                // Load products in batches
+                $collection = $this->productCollectionFactory->create();
+                $collection->addAttributeToSelect('*')
+                    ->addStoreFilter($storeId)
+                    ->addAttributeToFilter('status', Status::STATUS_ENABLED)
+                    ->addAttributeToFilter('visibility', ['in' => [
+                        Visibility::VISIBILITY_IN_CATALOG,
+                        Visibility::VISIBILITY_IN_SEARCH,
+                        Visibility::VISIBILITY_BOTH
+                    ]])
+                    ->setPageSize($batchSize)
+                    ->setCurPage($page);
+                
+                $products = $collection->getItems();
+                
+                if (empty($products)) {
+                    break;
+                }
+                
+                $output->writeln("<info>Processing batch {$page} - " . count($products) . " products...</info>");
+                
+                // Prepare batch data
+                $batchData = [];
+                foreach ($products as $product) {
+                    $productData = $this->formatProductForApi($product, $store);
+                    if ($productData) {
+                        $batchData[] = $productData;
+                    }
+                }
+                
+                if (!empty($batchData)) {
+                    // Send batch to AI service
+                    $synced = $this->sendProductBatch($batchData, $output);
+                    $totalSynced += $synced;
+                    
+                    $output->writeln("<info>Synced {$synced} products from batch {$page}</info>");
+                }
+                
+                $page++;
+                
+                // Small delay to prevent overwhelming the API
+                usleep(100000); // 0.1 second
+                
+            } while (count($products) == $batchSize);
+            
+        } catch (\Exception $e) {
+            $output->writeln('<error>Error during product sync: ' . $e->getMessage() . '</error>');
+            throw $e;
+        }
         
         return $totalSynced;
+    }
+
+    /**
+     * Format product data for API
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store $store
+     * @return array|null
+     */
+    private function formatProductForApi($product, $store): ?array
+    {
+        try {
+            // Get stock information
+            $stockItem = $this->stockRegistry->getStockItem($product->getId());
+            
+            // Get product URL
+            $productUrl = $product->getProductUrl();
+            
+            // Get product image
+            $imageUrl = '';
+            try {
+                $imageUrl = $this->imageHelper->init($product, 'product_base_image')->getUrl();
+            } catch (\Exception $e) {
+                // If image fails, continue without it
+            }
+            
+            // Get categories
+            $categoryIds = $product->getCategoryIds();
+            $categories = [];
+            if (!empty($categoryIds)) {
+                foreach ($categoryIds as $categoryId) {
+                    try {
+                        $category = $this->storeManager->getStore()->getGroupId();
+                        $categories[] = $categoryId;
+                    } catch (\Exception $e) {
+                        // Skip invalid categories
+                    }
+                }
+            }
+            
+            // Format product data according to AI service expectations
+            $productData = [
+                'id' => $product->getId(),
+                'sku' => $product->getSku(),
+                'name' => $product->getName(),
+                'description' => $product->getDescription() ?: $product->getShortDescription(),
+                'short_description' => $product->getShortDescription(),
+                'price' => (float)$product->getPrice(),
+                'special_price' => $product->getSpecialPrice() ? (float)$product->getSpecialPrice() : null,
+                'currency' => $store->getCurrentCurrency()->getCode(),
+                'url' => $productUrl,
+                'image_url' => $imageUrl,
+                'categories' => $categories,
+                'attributes' => [
+                    'type' => $product->getTypeId(),
+                    'weight' => $product->getWeight(),
+                    'manufacturer' => $product->getAttributeText('manufacturer'),
+                    'color' => $product->getAttributeText('color'),
+                    'size' => $product->getAttributeText('size'),
+                ],
+                'stock' => [
+                    'qty' => $stockItem ? (float)$stockItem->getQty() : 0,
+                    'is_in_stock' => $stockItem ? (bool)$stockItem->getIsInStock() : false,
+                    'manage_stock' => $stockItem ? (bool)$stockItem->getManageStock() : false,
+                ],
+                'status' => $product->getStatus(),
+                'visibility' => $product->getVisibility(),
+                'created_at' => $product->getCreatedAt(),
+                'updated_at' => $product->getUpdatedAt(),
+                'store_id' => $store->getId(),
+                'website_id' => $store->getWebsiteId()
+            ];
+            
+            return $productData;
+            
+        } catch (\Exception $e) {
+            // Log error but continue with other products
+            return null;
+        }
+    }
+
+    /**
+     * Send product batch to AI service
+     *
+     * @param array $batchData
+     * @param OutputInterface $output
+     * @return int
+     */
+    private function sendProductBatch(array $batchData, OutputInterface $output): int
+    {
+        try {
+            $indexEndpoint = '/api/v1/index/products';
+            
+            $payload = [
+                'products' => $batchData
+            ];
+            
+            // Create search service HTTP client  
+            $searchClient = $this->createSearchServiceClient();
+            
+            $response = $searchClient->post($indexEndpoint, $payload);
+            
+            if (isset($response['success']) && $response['success']) {
+                return isset($response['indexed_count']) ? (int)$response['indexed_count'] : count($batchData);
+            } else {
+                $error = isset($response['message']) ? $response['message'] : 'Unknown error';
+                $output->writeln("<error>API Error: {$error}</error>");
+                return 0;
+            }
+            
+        } catch (\Exception $e) {
+            $output->writeln('<error>Failed to send batch: ' . $e->getMessage() . '</error>');
+            return 0;
+        }
+    }
+
+    /**
+     * Create HTTP client specifically for search service
+     *
+     * @return HttpClient
+     */
+    private function createSearchServiceClient(): HttpClient
+    {
+        // Create a new HttpClient instance specifically configured for search service
+        $searchClient = clone $this->httpClient;
+        return $searchClient;
     }
 }
