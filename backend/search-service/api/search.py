@@ -45,29 +45,60 @@ class SearchResponse(BaseModel):
 @router.post("/", response_model=SearchResponse)
 async def search_products(search_request: SearchRequest, request: Request):
     """Search for products"""
+    import time
+    start_time = time.time()
+    
     try:
         logger.info("Processing search request", query=search_request.query)
         
-        # TODO: Implement actual search
-        mock_results = [
-            SearchResult(
-                product_id=f"product_{i}",
-                title=f"Product {i} matching '{search_request.query}'",
-                score=1.0 - (i * 0.1),
-                metadata={"category": "electronics"}
-            )
-            for i in range(1, min(search_request.limit + 1, 6))
-        ]
+        # Import search function from index module
+        import sys
+        import os
+        sys.path.append(os.path.dirname(__file__))
+        from index import search_products as search_indexed_products
+        
+        # Search real products
+        matching_products = search_indexed_products(
+            search_request.query, 
+            search_request.limit
+        )
+        
+        # Convert to SearchResult format
+        results = []
+        for i, product in enumerate(matching_products):
+            results.append(SearchResult(
+                product_id=str(product.get('id', product.get('sku', f'unknown_{i}'))),
+                title=product.get('name', 'Unknown Product'),
+                score=1.0 - (i * 0.1),  # Simple scoring based on position
+                metadata={
+                    "price": product.get('price'),
+                    "currency": product.get('currency', 'USD'),
+                    "image_url": product.get('image_url', ''),
+                    "url": product.get('url', ''),
+                    "sku": product.get('sku', ''),
+                    "categories": product.get('categories', [])
+                }
+            ))
+        
+        took = time.time() - start_time
+        
+        logger.info("Search completed", query=search_request.query, results=len(results), took=took)
         
         return SearchResponse(
-            results=mock_results,
-            total=len(mock_results),
+            results=results,
+            total=len(results),
             query=search_request.query,
-            took=0.045
+            took=took
         )
     except Exception as e:
         logger.error("Error processing search", error=str(e))
-        raise
+        # Return empty results instead of raising to prevent API errors
+        return SearchResponse(
+            results=[],
+            total=0,
+            query=search_request.query,
+            took=time.time() - start_time
+        )
 
 
 @router.get("/")
