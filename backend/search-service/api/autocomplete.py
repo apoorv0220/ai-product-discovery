@@ -78,8 +78,13 @@ class AutocompleteResponse(BaseModel):
 
 class AutocompleteRequest(BaseModel):
     """Autocomplete request model for POST requests"""
-    q: str
+    q: Optional[str] = None
+    query: Optional[str] = None  # Alternative field name for compatibility
     limit: Optional[int] = 10
+    
+    def get_query(self) -> str:
+        """Get the query value from either q or query field"""
+        return self.q or self.query or ""
 
 
 async def _process_autocomplete_request(q: str, limit: int = 10):
@@ -129,7 +134,11 @@ async def post_autocomplete(
     request: Request = None
 ):
     """Get autocomplete suggestions via POST with JSON body"""
-    return await _process_autocomplete_request(autocomplete_request.q, autocomplete_request.limit)
+    query = autocomplete_request.get_query()
+    if not query:
+        # Return empty suggestions if no query provided
+        return AutocompleteResponse(suggestions=[], query="")
+    return await _process_autocomplete_request(query, autocomplete_request.limit)
 
 @router.post("/form", response_model=AutocompleteResponse)
 async def post_autocomplete_form(
