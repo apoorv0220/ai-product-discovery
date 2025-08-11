@@ -8,9 +8,9 @@ AI Product Discovery Suite - Search Service Autocomplete API
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, Body
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 import structlog
 import json
 import os
@@ -76,14 +76,14 @@ class AutocompleteResponse(BaseModel):
     suggestions: List[AutocompleteResult]
     query: str
 
+class AutocompleteRequest(BaseModel):
+    """Autocomplete request model for POST requests"""
+    q: str
+    limit: Optional[int] = 10
 
-@router.get("/", response_model=AutocompleteResponse)
-async def get_autocomplete(
-    q: str = Query(..., description="Partial search query"),
-    limit: int = Query(10, description="Number of suggestions"),
-    request: Request = None
-):
-    """Get autocomplete suggestions"""
+
+async def _process_autocomplete_request(q: str, limit: int = 10):
+    """Internal function to process autocomplete requests"""
     try:
         logger.info("Getting autocomplete suggestions", query=q)
         
@@ -113,3 +113,29 @@ async def get_autocomplete(
             suggestions=[],
             query=q
         )
+
+@router.get("/", response_model=AutocompleteResponse)
+async def get_autocomplete(
+    q: str = Query(..., description="Partial search query"),
+    limit: int = Query(10, description="Number of suggestions"),
+    request: Request = None
+):
+    """Get autocomplete suggestions via GET"""
+    return await _process_autocomplete_request(q, limit)
+
+@router.post("/", response_model=AutocompleteResponse)
+async def post_autocomplete(
+    autocomplete_request: AutocompleteRequest = Body(...),
+    request: Request = None
+):
+    """Get autocomplete suggestions via POST with JSON body"""
+    return await _process_autocomplete_request(autocomplete_request.q, autocomplete_request.limit)
+
+@router.post("/form", response_model=AutocompleteResponse)
+async def post_autocomplete_form(
+    q: str = Query(..., description="Partial search query"),
+    limit: int = Query(10, description="Number of suggestions"),
+    request: Request = None
+):
+    """Get autocomplete suggestions via POST with query parameters (for form submissions)"""
+    return await _process_autocomplete_request(q, limit)

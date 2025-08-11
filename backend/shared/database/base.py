@@ -67,26 +67,42 @@ async def init_database():
     logger = structlog.get_logger()
     
     try:
+        # Check if we need database initialization (some services like search may not need full models)
+        service_name = os.environ.get('SERVICE_NAME', 'unknown')
+        logger.info("Initializing database", service=service_name)
+        
         async with engine.begin() as conn:
-            # Import all models to ensure they are registered
-            try:
-                from shared.models import product, user, search, recommendation, analytics
-                logger.info("Successfully imported all models")
-            except ImportError:
-                # Try alternative import paths
-                try:
-                    from shared.models.product import Product
-                    from shared.models.user import User
-                    from shared.models.search import SearchQuery
-                    from shared.models.recommendation import Recommendation
-                    from shared.models.analytics import AnalyticsEvent
-                    logger.info("Successfully imported individual models")
-                except ImportError as ie:
-                    logger.warning("Could not import models", import_error=str(ie))
-                    # Continue without models - tables will be created when models are loaded
+            # Only try to import models if we're in a service that needs them
+            models_imported = False
             
-            # Create all tables
-            await conn.run_sync(Base.metadata.create_all)
+            if service_name in ['celery', 'analytics', 'recommendation']:
+                # Services that need full model access
+                try:
+                    from shared.models import product, user, search, recommendation, analytics
+                    logger.info("Successfully imported all models")
+                    models_imported = True
+                except ImportError:
+                    # Try alternative import paths
+                    try:
+                        from shared.models.product import Product
+                        from shared.models.user import User
+                        from shared.models.search import SearchQuery
+                        from shared.models.recommendation import Recommendation
+                        from shared.models.analytics import AnalyticsEvent
+                        logger.info("Successfully imported individual models")
+                        models_imported = True
+                    except ImportError as ie:
+                        logger.warning("Could not import models", import_error=str(ie), service=service_name)
+            else:
+                # Services like search that don't need full models
+                logger.info("Skipping model imports for service", service=service_name)
+            
+            # Create all tables (only if models are registered)
+            if models_imported or Base.metadata.tables:
+                await conn.run_sync(Base.metadata.create_all)
+                logger.info("Database tables created")
+            else:
+                logger.info("No models to create tables for")
             
         logger.info("Database initialized successfully")
         
