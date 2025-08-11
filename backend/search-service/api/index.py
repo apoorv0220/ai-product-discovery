@@ -48,6 +48,16 @@ def save_products():
 # Load existing products on startup
 load_products()
 
+@router.get("/status")
+async def get_index_status():
+    """Get status of the search index"""
+    return {
+        "status": "active",
+        "total_products": get_product_count(),
+        "storage_file": PRODUCTS_FILE,
+        "storage_exists": os.path.exists(PRODUCTS_FILE)
+    }
+
 def search_products(query: str, limit: int = 10):
     """Search products by query"""
     if not query.strip():

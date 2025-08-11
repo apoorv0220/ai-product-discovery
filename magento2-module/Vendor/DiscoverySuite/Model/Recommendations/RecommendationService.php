@@ -102,7 +102,7 @@ class RecommendationService implements RecommendationInterface
         }
 
         try {
-            $endpoint = $this->helper->getServiceUrl('recommendation', '/api/v1/similar/');
+            $endpoint = $this->helper->getServiceUrl('recommendation', '/api/v1/recommendations/similar');
             
             $requestData = [
                 'product_id' => $productId,
@@ -111,7 +111,7 @@ class RecommendationService implements RecommendationInterface
 
             $response = $this->httpClient->post($endpoint, $requestData);
             
-            return $response['similar_products'] ?? [];
+            return $response['recommendations'] ?? [];
 
         } catch (\Exception $e) {
             $this->logger->error(

@@ -33,10 +33,17 @@ def load_products():
 
 def get_autocomplete_suggestions(query: str, limit: int = 10):
     """Get real autocomplete suggestions from indexed products"""
+    # Load current products
+    products = load_products()
+    
+    # Check if we have any products
+    if not products:
+        logger.warning("No products found in index for autocomplete", query=query)
+        return []
+        
     if not query.strip():
         return []
     
-    products = load_products()
     query_lower = query.lower()
     suggestions = []
     

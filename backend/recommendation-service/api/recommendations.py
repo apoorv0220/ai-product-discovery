@@ -108,22 +108,27 @@ async def get_recommendations(
 
 @router.post("/similar", response_model=RecommendationResponse)
 async def get_similar_products(
-    product_id: str,
-    limit: Optional[int] = 10,
+    request: dict,
     http_request: Request = None
 ):
     """
     Get products similar to a given product
     
     Args:
-        product_id: ID of the reference product
-        limit: Maximum number of similar products to return
+        request: Dictionary containing product_id and optional limit
         http_request: FastAPI request object
         
     Returns:
         RecommendationResponse with similar products
     """
     try:
+        # Extract parameters from request body
+        product_id = str(request.get('product_id', ''))
+        limit = int(request.get('limit', 10))
+        
+        if not product_id:
+            raise HTTPException(status_code=400, detail="product_id is required")
+        
         logger.info(
             "Getting similar products",
             product_id=product_id,

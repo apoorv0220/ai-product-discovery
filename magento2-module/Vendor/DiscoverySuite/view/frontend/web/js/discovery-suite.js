@@ -9,7 +9,7 @@ define([
 ], function ($, url, storage, cookies) {
     'use strict';
 
-    return {
+    var DiscoveryMain = {
         config: {},
         
         /**
@@ -349,13 +349,7 @@ define([
             return sessionId;
         }
     };
-});
 
-// Auto-initialize when DOM is ready
-require(['jquery', 'discoveryMain'], function ($, discovery) {
-    $(document).ready(function () {
-        discovery.init({
-            trackingEnabled: true
-        });
-    });
+    // Return the module for RequireJS
+    return DiscoveryMain;
 });

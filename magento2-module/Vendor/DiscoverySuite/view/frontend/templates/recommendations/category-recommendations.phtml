@@ -1,0 +1,81 @@
+<?php
+/**
+ * AI Category Recommendations Template
+ * @var \Vendor\DiscoverySuite\Block\Recommendations\Widget $block
+ */
+?>
+<?php if ($block->isEnabled()): ?>
+<?php $recommendations = $block->getRecommendations(); ?>
+<?php if (!empty($recommendations)): ?>
+<div class="discovery-recommendations-container discovery-category-recommendations">
+    <h3 class="discovery-section-title"><?= __('Recommended for You') ?></h3>
+    
+    <div class="discovery-products-grid">
+        <?php foreach ($recommendations as $recommendation): ?>
+            <?php $product = $recommendation['product']; ?>
+            <div class="discovery-product-item" data-product-id="<?= $product->getId() ?>">
+                <a href="<?= $product->getProductUrl() ?>" class="discovery-product-link">
+                    <div class="discovery-product-image">
+                        <?php $imageUrl = $this->helper('Magento\Catalog\Helper\Image')
+                            ->init($product, 'category_page_list')
+                            ->setImageFile($product->getSmallImage())
+                            ->resize(200, 200)
+                            ->getUrl(); ?>
+                        <img src="<?= $imageUrl ?>" alt="<?= $block->escapeHtml($product->getName()) ?>" />
+                    </div>
+                    
+                    <div class="discovery-product-details">
+                        <h4 class="discovery-product-name"><?= $block->escapeHtml($product->getName()) ?></h4>
+                        
+                        <?php if ($product->getPrice()): ?>
+                        <div class="discovery-product-price">
+                            <?= $this->helper('Magento\Framework\Pricing\Helper\Data')->currency($product->getPrice(), true, false) ?>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($recommendation['score'])): ?>
+                        <div class="discovery-match-score">
+                            <?= round($recommendation['score'] * 100) ?>% match
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($recommendation['reason'])): ?>
+                        <div class="discovery-recommendation-reason">
+                            <?= $block->escapeHtml($recommendation['reason']) ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </a>
+                
+                <div class="discovery-product-actions">
+                    <button class="discovery-add-to-cart action primary" data-product-id="<?= $product->getId() ?>">
+                        <span><?= __('Add to Cart') ?></span>
+                    </button>
+                    
+                    <button class="discovery-add-to-wishlist action" data-product-id="<?= $product->getId() ?>">
+                        <span><?= __('Add to Wishlist') ?></span>
+                    </button>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    
+    <div class="discovery-recommendation-meta">
+        <span class="discovery-powered-by"><?= __('Powered by AI Discovery Suite') ?></span>
+    </div>
+</div>
+
+<script type="text/x-magento-init">
+{
+    ".discovery-category-recommendations": {
+        "discoveryRecommendations": <?= $block->getConfigJson() ?>
+    }
+}
+</script>
+<?php else: ?>
+<!-- No recommendations available for this category -->
+<div class="discovery-no-recommendations" style="display: none;">
+    <p><?= __('No personalized recommendations available at this time.') ?></p>
+</div>
+<?php endif; ?>
+<?php endif; ?>
