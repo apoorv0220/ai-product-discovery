@@ -19,6 +19,7 @@ class RecommendationContext(str, Enum):
     HOME = "home"
     PRODUCT_DETAIL = "product_detail"
     PRODUCT_VIEW = "product_view"  # Alternative for product_detail
+    SIMILAR_PRODUCTS = "similar_products"  # For similar product recommendations
     CART = "cart"
     CHECKOUT = "checkout"
     CATEGORY = "category"
