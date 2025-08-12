@@ -55,19 +55,24 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
             currency = product.get('currency', 'USD')
             formatted_price = f"{currency} {price:.2f}" if price else ""
             
+            # Get primary category
+            categories = product.get('categories', [])
+            primary_category = categories[0] if categories else 'General'
+            
             suggestions.append({
                 'suggestion': product_name,
-                'title': product_name,  # Add title field for frontend
+                'title': product_name,
                 'type': 'product',
-                'count': 1,  # In a real system, this would be stock quantity or popularity
-                'product_id': product.get('id'),
-                'price': formatted_price,  # Formatted price for display
-                'raw_price': price,  # Keep raw price for sorting
+                'count': 1,
+                'id': product.get('id', 0),
+                'sku': product.get('sku', ''),
+                'price': formatted_price,
+                'raw_price': price,
                 'currency': currency,
-                'image': product.get('image_url', ''),  # Map image_url to image
-                'image_url': product.get('image_url', ''),  # Keep original for compatibility
+                'image': product.get('image_url', ''),
                 'url': product.get('url', ''),
-                'categories': product.get('categories', [])
+                'category': primary_category,
+                'categories': categories
             })
     
     # Sort by relevance (how close the match is to the beginning of the name)
@@ -85,6 +90,14 @@ class AutocompleteResult(BaseModel):
     suggestion: str
     type: str  # 'product', 'category', 'brand'
     count: int
+    # Extended fields for Magento compatibility
+    title: Optional[str] = None
+    image: Optional[str] = None
+    price: Optional[str] = None
+    url: Optional[str] = None
+    category: Optional[str] = None
+    sku: Optional[str] = None
+    id: Optional[int] = None
 
 
 class AutocompleteResponse(BaseModel):
@@ -176,11 +189,18 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
         # Convert to response format
         suggestions = []
         for item in suggestions_data:
-            # Create the basic AutocompleteResult
+            # Create the AutocompleteResult with all required fields
             suggestion_obj = AutocompleteResult(
                 suggestion=item['suggestion'],
                 type=item['type'],
-                count=item['count']
+                count=item['count'],
+                title=item.get('title', item['suggestion']),
+                image=item.get('image', ''),
+                price=item.get('price', '$0.00'),
+                url=item.get('url', '#'),
+                category=item.get('category', 'General'),
+                sku=item.get('sku', ''),
+                id=item.get('id', 0)
             )
             
             # Add additional metadata as extra fields

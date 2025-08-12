@@ -369,10 +369,14 @@ class SyncCatalog extends Command
                 'products' => $batchData
             ];
             
-            // Create search service HTTP client  
-            $searchClient = $this->createSearchServiceClient();
+            // Check if search service is available before sending
+            if (!$this->helper->isServiceAvailable('search')) {
+                $output->writeln('<error>Search service (port 7001) is not available. Please start AI services first.</error>');
+                return 0;
+            }
             
-            $response = $searchClient->post($indexEndpoint, $payload);
+            // Use the injected HTTP client (now configured for search service via DI)
+            $response = $this->httpClient->post($indexEndpoint, $payload);
             
             if (isset($response['success']) && $response['success']) {
                 return isset($response['indexed_count']) ? (int)$response['indexed_count'] : count($batchData);
@@ -388,15 +392,5 @@ class SyncCatalog extends Command
         }
     }
 
-    /**
-     * Create HTTP client specifically for search service
-     *
-     * @return HttpClient
-     */
-    private function createSearchServiceClient(): HttpClient
-    {
-        // Create a new HttpClient instance specifically configured for search service
-        $searchClient = clone $this->httpClient;
-        return $searchClient;
-    }
+
 }

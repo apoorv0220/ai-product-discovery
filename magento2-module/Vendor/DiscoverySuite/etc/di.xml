@@ -63,6 +63,13 @@
         </arguments>
     </type>
     
+    <!-- Inject SearchClient into SyncCatalog Command -->
+    <type name="Vendor\DiscoverySuite\Console\Command\SyncCatalog">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+    
     <!-- Service HTTP Client Injection -->
     <type name="Vendor\DiscoverySuite\Model\Search\SearchService">
         <arguments>
