@@ -65,6 +65,12 @@ class SearchService implements SearchInterface
             return [];
         }
 
+        // Check if AI service is available
+        if (!$this->helper->isServiceAvailable('search')) {
+            $this->logger->warning('Search service unavailable, using fallback');
+            return $this->helper->getFallbackSearchResults($query, $limit);
+        }
+
         try {
             $endpoint = $this->helper->getServiceUrl('search', '/api/v1/search/');
             

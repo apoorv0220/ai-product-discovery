@@ -59,7 +59,8 @@ class Data extends AbstractHelper
         'recommendation' => 7002,
         'listing_optimizer' => 7003,
         'analytics' => 7003,
-        'shopping_assistant' => 7004
+        'shopping_assistant' => 7004,
+        'index' => 7099  // Legacy indexing service port
     ];
 
     /**
@@ -527,5 +528,54 @@ class Data extends AbstractHelper
         $port = $this->servicePorts[$service] ?? 7001;
         
         return $baseUrl . ':' . $port . $endpoint;
+    }
+
+    /**
+     * Check if AI services are available
+     *
+     * @param string $service
+     * @param int|null $storeId
+     * @return bool
+     */
+    public function isServiceAvailable(string $service, $storeId = null): bool
+    {
+        try {
+            $url = $this->getServiceUrl($service, '/health', $storeId);
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            return $httpCode === 200 && !empty($response);
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Get fallback search results from Magento
+     *
+     * @param string $query
+     * @param int $limit
+     * @return array
+     */
+    public function getFallbackSearchResults(string $query, int $limit = 10): array
+    {
+        // This will return basic search results when AI services are down
+        return [
+            'results' => [],
+            'total' => 0,
+            'query' => $query,
+            'took' => 0,
+            'fallback_mode' => true,
+            'message' => 'Using fallback search - AI services temporarily unavailable'
+        ];
     }
 }

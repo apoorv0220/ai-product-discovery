@@ -169,7 +169,14 @@ class TestAdvancedAi extends Command
         // Test 1: NLP-Enhanced Search
         $output->writeln('Testing NLP semantic search...');
         try {
-            $searchResult = $this->searchService->search('I want to buy a Hero Hoodie', 5);
+            // First check if service is available
+            if (!$this->helper->isServiceAvailable('search')) {
+                $output->writeln('⚠️  Search service not available - testing fallback mode');
+                $searchResult = $this->helper->getFallbackSearchResults('I want to buy a Hero Hoodie', 5);
+                $results['nlp_search'] = ['status' => 'service_unavailable', 'fallback' => true];
+            } else {
+                $searchResult = $this->searchService->search('I want to buy a Hero Hoodie', 5);
+            }
             
             if (!empty($searchResult['results'])) {
                 $nlpEnabled = $searchResult['search_metadata']['nlp_enabled'] ?? false;

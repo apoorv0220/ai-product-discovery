@@ -207,7 +207,6 @@ class RecommendationService implements RecommendationInterface
 
         return $reasons[$algorithm] ?? ($personalized ? 'Personally recommended for you' : 'Recommended product');
     }
-}
 
     /**
      * Track user interaction

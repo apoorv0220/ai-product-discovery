@@ -1,23 +1,14 @@
 <?xml version="1.0"?>
 <!--
 /**
- * DiscoverySuite Frontend Routes Configuration
- *
- * @category    Vendor
- * @package     Vendor_DiscoverySuite
- * @author      AI Product Discovery Team
- * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
- * @license     https://opensource.org/licenses/MIT MIT License
+ * DiscoverySuite Frontend Routes
  */
 -->
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
         xsi:noNamespaceSchemaLocation="urn:magento:framework:App/etc/routes.xsd">
     <router id="standard">
         <route id="discoverysuite" frontName="discoverysuite">
-            <module name="Vendor_DiscoverySuite"/>
-        </route>
-        <route id="discovery" frontName="discovery">
-            <module name="Vendor_DiscoverySuite"/>
+            <module name="Vendor_DiscoverySuite" />
         </route>
     </router>
 </config>
