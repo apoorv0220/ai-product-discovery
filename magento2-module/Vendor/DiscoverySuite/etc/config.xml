@@ -28,6 +28,9 @@
                 <autocomplete_max_results>10</autocomplete_max_results>
                 <typo_tolerance>1</typo_tolerance>
                 <synonyms_enabled>1</synonyms_enabled>
+                <nlp_enabled>1</nlp_enabled>
+                <intent_recognition>1</intent_recognition>
+                <semantic_search>1</semantic_search>
                 <fallback_to_magento>1</fallback_to_magento>
             </search>
             <recommendations>
@@ -37,6 +40,10 @@
                 <cart_page_enabled>1</cart_page_enabled>
                 <category_page_enabled>1</category_page_enabled>
                 <max_recommendations>12</max_recommendations>
+                <ml_powered>1</ml_powered>
+                <real_time_learning>1</real_time_learning>
+                <collaborative_filtering>1</collaborative_filtering>
+                <content_based>1</content_based>
                 <recommendation_types>cross_sell,up_sell,similar,trending</recommendation_types>
             </recommendations>
             <smart_listings>
@@ -46,6 +53,7 @@
                 <merchandising_enabled>1</merchandising_enabled>
                 <boost_popular_products>1</boost_popular_products>
                 <boost_high_margin>0</boost_high_margin>
+                <ai_powered_sorting>1</ai_powered_sorting>
             </smart_listings>
             <shopping_assistant>
                 <enabled>1</enabled>
@@ -53,6 +61,9 @@
                 <chat_enabled>1</chat_enabled>
                 <guided_flow_enabled>1</guided_flow_enabled>
                 <auto_trigger_delay>30</auto_trigger_delay>
+                <conversational_ai>1</conversational_ai>
+                <nlp_processing>1</nlp_processing>
+                <multi_turn_conversations>1</multi_turn_conversations>
             </shopping_assistant>
             <analytics>
                 <enabled>1</enabled>
@@ -61,6 +72,10 @@
                 <track_purchases>1</track_purchases>
                 <track_page_views>1</track_page_views>
                 <ab_testing_enabled>1</ab_testing_enabled>
+                <real_time_tracking>1</real_time_tracking>
+                <behavioral_insights>1</behavioral_insights>
+                <ab_testing>1</ab_testing>
+                <predictive_analytics>1</predictive_analytics>
                 <data_retention_days>365</data_retention_days>
             </analytics>
         </discovery_suite_config>

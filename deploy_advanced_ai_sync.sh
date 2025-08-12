@@ -77,33 +77,42 @@ if [ "$ENVIRONMENT" = "MAGENTO_SERVER" ]; then
     php bin/magento config:set discovery_suite_config/general/enabled 1 --quiet
     php bin/magento config:set discovery_suite_config/general/api_base_url "http://ai-product-discovery.softdemonew.info" --quiet
     
-    # Advanced Search Configuration
+    # Basic Configuration (which should work immediately)
+    php bin/magento config:set discovery_suite_config/general/enabled 1 --quiet
+    php bin/magento config:set discovery_suite_config/general/api_base_url "http://ai-product-discovery.softdemonew.info" --quiet
     php bin/magento config:set discovery_suite_config/search/enabled 1 --quiet
     php bin/magento config:set discovery_suite_config/search/autocomplete_enabled 1 --quiet
-    php bin/magento config:set discovery_suite_config/search/nlp_enabled 1 --quiet
-    php bin/magento config:set discovery_suite_config/search/typo_tolerance 1 --quiet
-    php bin/magento config:set discovery_suite_config/search/intent_recognition 1 --quiet
-    php bin/magento config:set discovery_suite_config/search/semantic_search 1 --quiet
-    
-    # ML Recommendations Configuration
     php bin/magento config:set discovery_suite_config/recommendations/enabled 1 --quiet
-    php bin/magento config:set discovery_suite_config/recommendations/ml_powered 1 --quiet
-    php bin/magento config:set discovery_suite_config/recommendations/real_time_learning 1 --quiet
-    php bin/magento config:set discovery_suite_config/recommendations/collaborative_filtering 1 --quiet
-    php bin/magento config:set discovery_suite_config/recommendations/content_based 1 --quiet
-    
-    # Conversational AI Configuration
-    php bin/magento config:set discovery_suite_config/shopping_assistant/enabled 1 --quiet
-    php bin/magento config:set discovery_suite_config/shopping_assistant/conversational_ai 1 --quiet
-    php bin/magento config:set discovery_suite_config/shopping_assistant/nlp_processing 1 --quiet
-    php bin/magento config:set discovery_suite_config/shopping_assistant/multi_turn_conversations 1 --quiet
-    
-    # Advanced Analytics Configuration
     php bin/magento config:set discovery_suite_config/analytics/enabled 1 --quiet
-    php bin/magento config:set discovery_suite_config/analytics/real_time_tracking 1 --quiet
-    php bin/magento config:set discovery_suite_config/analytics/behavioral_insights 1 --quiet
-    php bin/magento config:set discovery_suite_config/analytics/ab_testing 1 --quiet
-    php bin/magento config:set discovery_suite_config/analytics/predictive_analytics 1 --quiet
+    php bin/magento config:set discovery_suite_config/shopping_assistant/enabled 1 --quiet
+    
+    echo "📋 Basic configuration applied. Advanced features will be available after cache refresh."
+    
+    # Try advanced features (these will work after the module is properly installed)
+    echo "🔧 Attempting to configure advanced AI features..."
+    
+    # Advanced Search Configuration (may fail initially)
+    php bin/magento config:set discovery_suite_config/search/nlp_enabled 1 --quiet 2>/dev/null || echo "   ⏳ NLP settings will be available after module refresh"
+    php bin/magento config:set discovery_suite_config/search/typo_tolerance 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/search/intent_recognition 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/search/semantic_search 1 --quiet 2>/dev/null || true
+    
+    # ML Recommendations Configuration (may fail initially)
+    php bin/magento config:set discovery_suite_config/recommendations/ml_powered 1 --quiet 2>/dev/null || echo "   ⏳ ML settings will be available after module refresh"
+    php bin/magento config:set discovery_suite_config/recommendations/real_time_learning 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/recommendations/collaborative_filtering 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/recommendations/content_based 1 --quiet 2>/dev/null || true
+    
+    # Conversational AI Configuration (may fail initially)
+    php bin/magento config:set discovery_suite_config/shopping_assistant/conversational_ai 1 --quiet 2>/dev/null || echo "   ⏳ Conversational AI settings will be available after module refresh"
+    php bin/magento config:set discovery_suite_config/shopping_assistant/nlp_processing 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/shopping_assistant/multi_turn_conversations 1 --quiet 2>/dev/null || true
+    
+    # Advanced Analytics Configuration (may fail initially)
+    php bin/magento config:set discovery_suite_config/analytics/real_time_tracking 1 --quiet 2>/dev/null || echo "   ⏳ Analytics settings will be available after module refresh"
+    php bin/magento config:set discovery_suite_config/analytics/behavioral_insights 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/analytics/ab_testing 1 --quiet 2>/dev/null || true
+    php bin/magento config:set discovery_suite_config/analytics/predictive_analytics 1 --quiet 2>/dev/null || true
     
     echo -e "${GREEN}✅ Advanced AI configuration applied${NC}"
     

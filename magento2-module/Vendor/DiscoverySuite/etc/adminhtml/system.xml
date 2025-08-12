@@ -122,7 +122,34 @@
                     </depends>
                 </field>
                 
-                <field id="fallback_to_magento" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                <field id="nlp_enabled" translate="label comment" type="select" sortOrder="75" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable NLP Processing</label>
+                    <comment>Enable natural language processing for search queries</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="intent_recognition" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Intent Recognition</label>
+                    <comment>Detect user intent (buying, browsing, comparing) from search queries</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="nlp_enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="semantic_search" translate="label comment" type="select" sortOrder="85" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Semantic Search</label>
+                    <comment>Search based on meaning and context, not just keywords</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="nlp_enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="fallback_to_magento" translate="label comment" type="select" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
                     <label>Fallback to Magento Search</label>
                     <comment>Use Magento's default search when AI service is unavailable</comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
@@ -186,6 +213,42 @@
                         <field id="enabled">1</field>
                     </depends>
                 </field>
+                
+                <field id="ml_powered" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable ML-Powered Recommendations</label>
+                    <comment>Use machine learning algorithms for personalized recommendations</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="real_time_learning" translate="label comment" type="select" sortOrder="75" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Real-time Learning</label>
+                    <comment>Recommendations adapt to user behavior in real-time</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="ml_powered">1</field>
+                    </depends>
+                </field>
+                
+                <field id="collaborative_filtering" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Collaborative Filtering</label>
+                    <comment>"Users who liked this also liked..." recommendations</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="ml_powered">1</field>
+                    </depends>
+                </field>
+                
+                <field id="content_based" translate="label comment" type="select" sortOrder="85" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Content-Based Recommendations</label>
+                    <comment>Recommendations based on product features and attributes</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="ml_powered">1</field>
+                    </depends>
+                </field>
             </group>
             
             <!-- Smart Listings Settings -->
@@ -242,6 +305,15 @@
                         <field id="enabled">1</field>
                     </depends>
                 </field>
+                
+                <field id="ai_powered_sorting" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable AI-Powered Sorting</label>
+                    <comment>Use AI algorithms to intelligently sort product listings</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
             </group>
             
             <!-- Shopping Assistant Settings -->
@@ -287,6 +359,33 @@
                     <validate>validate-digits validate-digits-range digits-range-0-300</validate>
                     <depends>
                         <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="conversational_ai" translate="label comment" type="select" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Conversational AI</label>
+                    <comment>Enable natural language conversations with the shopping assistant</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="nlp_processing" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable NLP Processing</label>
+                    <comment>Use natural language processing to understand customer queries</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="conversational_ai">1</field>
+                    </depends>
+                </field>
+                
+                <field id="multi_turn_conversations" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Multi-turn Conversations</label>
+                    <comment>Maintain context across multiple conversation turns</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="conversational_ai">1</field>
                     </depends>
                 </field>
             </group>
@@ -343,6 +442,42 @@
                     <validate>validate-digits validate-digits-range digits-range-1-3650</validate>
                     <depends>
                         <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="real_time_tracking" translate="label comment" type="select" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Real-time Tracking</label>
+                    <comment>Track user behavior and events in real-time</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="behavioral_insights" translate="label comment" type="select" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Behavioral Insights</label>
+                    <comment>Generate insights from customer behavior patterns</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="real_time_tracking">1</field>
+                    </depends>
+                </field>
+                
+                <field id="ab_testing" translate="label comment" type="select" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Advanced A/B Testing</label>
+                    <comment>Advanced A/B testing framework with statistical analysis</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                
+                <field id="predictive_analytics" translate="label comment" type="select" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Predictive Analytics</label>
+                    <comment>Predict customer behavior, conversion probability, and churn risk</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <depends>
+                        <field id="behavioral_insights">1</field>
                     </depends>
                 </field>
             </group>
