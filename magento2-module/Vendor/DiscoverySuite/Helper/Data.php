@@ -568,14 +568,15 @@ class Data extends AbstractHelper
      */
     public function getFallbackSearchResults(string $query, int $limit = 10): array
     {
-        // This will return basic search results when AI services are down
+        // Return empty results when AI services are unavailable
         return [
             'results' => [],
             'total' => 0,
             'query' => $query,
             'took' => 0,
+            'ai_enhanced' => false,
             'fallback_mode' => true,
-            'message' => 'Using fallback search - AI services temporarily unavailable'
+            'error' => 'AI search services are currently unavailable'
         ];
     }
 }

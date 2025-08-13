@@ -200,8 +200,14 @@ class TestAdvancedAi extends Command
                     $output->writeln('   AI Message: ' . $searchResult['ai_message']);
                 }
             } else {
-                $output->writeln('⚠️  NLP Search: No results returned');
-                $results['nlp_search'] = ['status' => 'no_results'];
+                // Check if there's an error message
+                if (isset($searchResult['error'])) {
+                    $output->writeln('❌ NLP Search: ' . $searchResult['error']);
+                    $results['nlp_search'] = ['status' => 'service_error', 'error' => $searchResult['error']];
+                } else {
+                    $output->writeln('⚠️  NLP Search: No results returned');
+                    $results['nlp_search'] = ['status' => 'no_results'];
+                }
             }
         } catch (\Exception $e) {
             $output->writeln('❌ NLP Search failed: ' . $e->getMessage());
@@ -231,8 +237,14 @@ class TestAdvancedAi extends Command
                     'typo_corrections' => $typoCorrections
                 ];
             } else {
-                $output->writeln('⚠️  Typo Tolerance: No suggestions returned');
-                $results['typo_tolerance'] = ['status' => 'no_results'];
+                // Check if there's an error message
+                if (isset($autocompleteResult['error'])) {
+                    $output->writeln('❌ Typo Tolerance: ' . $autocompleteResult['error']);
+                    $results['typo_tolerance'] = ['status' => 'service_error', 'error' => $autocompleteResult['error']];
+                } else {
+                    $output->writeln('⚠️  Typo Tolerance: No suggestions returned');
+                    $results['typo_tolerance'] = ['status' => 'no_results'];
+                }
             }
         } catch (\Exception $e) {
             $output->writeln('❌ Typo Tolerance failed: ' . $e->getMessage());
@@ -280,8 +292,14 @@ class TestAdvancedAi extends Command
                     'algorithms' => $algorithms
                 ];
             } else {
-                $output->writeln('⚠️  ML Recommendations: No recommendations returned');
-                $results['ml_recommendations'] = ['status' => 'no_results'];
+                // Check if there's an error message
+                if (isset($recommendations['error'])) {
+                    $output->writeln('❌ ML Recommendations: ' . $recommendations['error']);
+                    $results['ml_recommendations'] = ['status' => 'service_error', 'error' => $recommendations['error']];
+                } else {
+                    $output->writeln('⚠️  ML Recommendations: No recommendations returned');
+                    $results['ml_recommendations'] = ['status' => 'no_results'];
+                }
             }
         } catch (\Exception $e) {
             $output->writeln('❌ ML Recommendations failed: ' . $e->getMessage());

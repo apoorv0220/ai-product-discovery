@@ -44,10 +44,8 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
     
     # Check if we have any products
     if not products:
-        logger.warning("No products found in index for autocomplete, using sample data", query=query)
-        # Return sample products for demonstration (especially for "Hero Hoodie")
-        sample_products = get_sample_products()
-        products = sample_products
+        logger.warning("No products found in index for autocomplete", query=query)
+        return []
     
     for product_id, product in products.items():
         product_name = product.get('name', '')
@@ -96,60 +94,6 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
     
     suggestions.sort(key=relevance_score)
     return suggestions[:limit]
-
-
-def get_sample_products():
-    """Return sample products for demonstration when no real products are indexed"""
-    return {
-        '1': {
-            'id': 1,
-            'sku': 'HERO-HOODIE-001',
-            'name': 'Hero Hoodie',
-            'description': 'Premium quality hero themed hoodie with comfortable fit',
-            'price': 59.99,
-            'currency': 'USD',
-            'image_url': 'https://example.com/images/hero-hoodie.jpg',
-            'url': '/hero-hoodie',
-            'categories': [{'name': 'Hoodies', 'id': 'cat_hoodies'}],
-            'searchable_text': 'hero hoodie premium quality comfortable fit'
-        },
-        '2': {
-            'id': 2,
-            'sku': 'CLASSIC-TEE-002',
-            'name': 'Classic Hero T-Shirt',
-            'description': 'Classic hero themed t-shirt in multiple colors',
-            'price': 29.99,
-            'currency': 'USD', 
-            'image_url': 'https://example.com/images/hero-tshirt.jpg',
-            'url': '/hero-tshirt',
-            'categories': [{'name': 'T-Shirts', 'id': 'cat_tshirts'}],
-            'searchable_text': 'hero t-shirt classic shirt tee'
-        },
-        '3': {
-            'id': 3,
-            'sku': 'SUPER-JACKET-003',
-            'name': 'Super Hero Jacket',
-            'description': 'Weather-resistant superhero jacket',
-            'price': 89.99,
-            'currency': 'USD',
-            'image_url': 'https://example.com/images/super-jacket.jpg', 
-            'url': '/super-jacket',
-            'categories': [{'name': 'Jackets', 'id': 'cat_jackets'}],
-            'searchable_text': 'super hero jacket weather resistant superhero'
-        },
-        '4': {
-            'id': 4,
-            'sku': 'TANK-TOP-004',
-            'name': 'Tank Top Hero',
-            'description': 'Lightweight tank top with hero design',
-            'price': 24.99,
-            'currency': 'USD',
-            'image_url': 'https://example.com/images/tank-top.jpg',
-            'url': '/tank-top',
-            'categories': [{'name': 'Tank Tops', 'id': 'cat_tanks'}],
-            'searchable_text': 'tank top hero lightweight design'
-        }
-    }
 
 
 class AutocompleteResult(BaseModel):

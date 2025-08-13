@@ -93,13 +93,21 @@ class RecommendationService implements RecommendationInterface
             if ($response && isset($response['recommendations'])) {
                 $metadata = $response['recommendation_metadata'] ?? [];
                 
-                // Add ML insights to each recommendation
+                // Add ML insights to each recommendation (only if provided by AI service)
                 foreach ($response['recommendations'] as &$recommendation) {
-                    // Mark as ML-powered if available
-                    $recommendation['ml_powered'] = $recommendation['ml_powered'] ?? false;
-                    $recommendation['personalized'] = $recommendation['personalized'] ?? false;
-                    $recommendation['algorithm_used'] = $recommendation['algorithm'] ?? 'unknown';
-                    $recommendation['confidence_score'] = $recommendation['confidence'] ?? 0.8;
+                    // Only add ML metadata if it exists in the response
+                    if (!isset($recommendation['ml_powered'])) {
+                        $recommendation['ml_powered'] = false; // Default to false if not specified
+                    }
+                    if (!isset($recommendation['personalized'])) {
+                        $recommendation['personalized'] = false;
+                    }
+                    if (isset($recommendation['algorithm'])) {
+                        $recommendation['algorithm_used'] = $recommendation['algorithm'];
+                    }
+                    if (isset($recommendation['confidence'])) {
+                        $recommendation['confidence_score'] = $recommendation['confidence'];
+                    }
                     
                     // Add user-friendly reason
                     if (empty($recommendation['reason'])) {
@@ -117,12 +125,12 @@ class RecommendationService implements RecommendationInterface
                     $recommendation['price'] = $recommendation['price'] ?? 0;
                 }
                 
-                // Add overall ML metadata
+                // Add overall ML metadata (only if provided by AI service)
                 $response['ml_insights'] = [
                     'ml_powered' => $metadata['ml_powered'] ?? false,
                     'personalized' => $metadata['personalized'] ?? false,
                     'algorithms_used' => $metadata['algorithms_used'] ?? [],
-                    'avg_confidence' => $metadata['avg_confidence'] ?? 0.8,
+                    'avg_confidence' => $metadata['avg_confidence'] ?? 0,
                     'real_time_learning' => $this->helper->isRealTimeLearningEnabled(),
                     'collaborative_filtering' => $this->helper->isCollaborativeFilteringEnabled(),
                     'content_based' => $this->helper->isContentBasedEnabled()
@@ -138,14 +146,22 @@ class RecommendationService implements RecommendationInterface
                 return $response;
             }
             
-            return $response['recommendations'] ?? [];
+            return $response;
 
         } catch (\Exception $e) {
             $this->logger->error(
                 'DiscoverySuite: Recommendations API error',
                 ['error' => $e->getMessage(), 'user_id' => $userId, 'context' => $context]
             );
-            return [];
+            
+            return [
+                'recommendations' => [],
+                'total' => 0,
+                'user_id' => $userId,
+                'context' => $context,
+                'error' => 'Recommendations service failed: ' . $e->getMessage(),
+                'ai_enhanced' => false
+            ];
         }
     }
 

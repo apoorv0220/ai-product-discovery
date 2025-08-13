@@ -67,8 +67,14 @@ class SearchService implements SearchInterface
 
         // Check if AI service is available
         if (!$this->helper->isServiceAvailable('search')) {
-            $this->logger->warning('Search service unavailable, using fallback');
-            return $this->helper->getFallbackSearchResults($query, $limit);
+            $this->logger->warning('Search service unavailable', ['query' => $query]);
+            return [
+                'results' => [],
+                'total' => 0,
+                'query' => $query,
+                'error' => 'AI search service is currently unavailable',
+                'fallback_mode' => true
+            ];
         }
 
         try {
@@ -88,13 +94,23 @@ class SearchService implements SearchInterface
                 // Extract NLP insights if available
                 $nlpInsights = $response['search_metadata'] ?? [];
                 
-                // Add AI enhancement metadata to each result
+                // Add AI enhancement metadata to each result (only if provided by AI service)
                 foreach ($response['results'] as &$result) {
-                    // Mark results as AI-enhanced
-                    $result['ai_enhanced'] = true;
-                    $result['nlp_enabled'] = $nlpInsights['nlp_enabled'] ?? false;
-                    $result['semantic_search'] = $nlpInsights['semantic_search'] ?? false;
-                    $result['typo_corrected'] = $nlpInsights['typo_corrected'] ?? false;
+                    if (isset($nlpInsights['nlp_enabled'])) {
+                        $result['nlp_enabled'] = $nlpInsights['nlp_enabled'];
+                    }
+                    if (isset($nlpInsights['semantic_search'])) {
+                        $result['semantic_search'] = $nlpInsights['semantic_search'];
+                    }
+                    if (isset($nlpInsights['typo_corrected'])) {
+                        $result['typo_corrected'] = $nlpInsights['typo_corrected'];
+                    }
+                    $result['ai_enhanced'] = !empty($nlpInsights);
+                }
+                
+                // Preserve original search_metadata from AI service
+                if (!isset($response['search_metadata'])) {
+                    $response['search_metadata'] = $nlpInsights;
                 }
                 
                 // Add user-friendly AI messages
@@ -130,7 +146,13 @@ class SearchService implements SearchInterface
                 'DiscoverySuite: Search API error',
                 ['error' => $e->getMessage(), 'query' => $query]
             );
-            return [];
+            return [
+                'results' => [],
+                'total' => 0,
+                'query' => $query,
+                'error' => 'Search request failed: ' . $e->getMessage(),
+                'ai_enhanced' => false
+            ];
         }
     }
 
@@ -174,12 +196,16 @@ class SearchService implements SearchInterface
                     }
                 }
                 
-                // Add metadata about AI processing
-                $response['ai_metadata'] = [
-                    'nlp_processing' => $metadata['nlp_processing'] ?? false,
-                    'typo_corrections' => $metadata['typo_corrections'] ?? 0,
-                    'intent_detection' => $metadata['intent_detection'] ?? false
-                ];
+                // Add metadata about AI processing (only if metadata exists)
+                if (!empty($metadata)) {
+                    $response['ai_metadata'] = [
+                        'nlp_processing' => $metadata['nlp_processing'] ?? false,
+                        'typo_corrections' => $this->countTypoCorrections($response['suggestions']),
+                        'intent_detection' => $metadata['intent_detection'] ?? false,
+                        'semantic_search' => $metadata['semantic_search'] ?? false,
+                        'ai_enhanced' => true
+                    ];
+                }
                 
                 return $response;
             }
@@ -191,7 +217,12 @@ class SearchService implements SearchInterface
                 'DiscoverySuite: Autocomplete API error',
                 ['error' => $e->getMessage(), 'query' => $query]
             );
-            return [];
+            return [
+                'suggestions' => [],
+                'query' => $query,
+                'error' => 'Autocomplete request failed: ' . $e->getMessage(),
+                'ai_enhanced' => false
+            ];
         }
     }
 
@@ -253,5 +284,22 @@ class SearchService implements SearchInterface
             );
             return false;
         }
+    }
+    
+    /**
+     * Count typo corrections in suggestions
+     *
+     * @param array $suggestions
+     * @return int
+     */
+    private function countTypoCorrections(array $suggestions): int
+    {
+        $count = 0;
+        foreach ($suggestions as $suggestion) {
+            if (isset($suggestion['is_corrected']) && $suggestion['is_corrected']) {
+                $count++;
+            }
+        }
+        return $count;
     }
 }
