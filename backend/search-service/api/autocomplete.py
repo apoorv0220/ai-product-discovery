@@ -50,25 +50,91 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
     for product_id, product in products.items():
         product_name = product.get('name', '')
         searchable_text = product.get('searchable_text', product_name.lower())
+        product_description = product.get('description', '')
         
-        # Check if query matches product name or searchable text
-        if query_lower in product_name.lower() or query_lower in searchable_text:
+        # Check if query matches product name, searchable text, or description
+        # Also check individual words for partial matching
+        query_words = query_lower.split()
+        name_lower = product_name.lower()
+        desc_lower = product_description.lower()
+        
+        match_found = False
+        
+        # Direct substring match
+        if query_lower in name_lower or query_lower in searchable_text or query_lower in desc_lower:
+            match_found = True
+        
+        # Individual word matching for better semantic search
+        if not match_found:
+            for word in query_words:
+                if len(word) > 2:  # Skip very short words
+                    if word in name_lower or word in searchable_text or word in desc_lower:
+                        match_found = True
+                        break
+        
+        if match_found:
             # Format price for display
             price = product.get('price', 0)
+            special_price = product.get('special_price')
             currency = product.get('currency', 'USD')
-            formatted_price = f"${price:.2f}" if price else "$0.00"
+            
+            # Use special price if available, otherwise regular price
+            display_price = special_price if special_price and special_price > 0 else price
+            
+            if display_price and display_price > 0:
+                formatted_price = f"${display_price:.2f}"
+            else:
+                # Try to extract price from other fields
+                price_str = str(product.get('final_price', product.get('regular_price', '')))
+                if price_str and price_str != '0' and price_str != '':
+                    try:
+                        extracted_price = float(price_str)
+                        formatted_price = f"${extracted_price:.2f}"
+                    except (ValueError, TypeError):
+                        formatted_price = "Price on request"
+                else:
+                    formatted_price = "Price on request"
             
             # Get primary category name (not ID)
             categories = product.get('categories', [])
+            primary_category = 'General'
+            
             if categories:
                 # If categories is a list of dicts with name/id, extract name
                 if isinstance(categories[0], dict):
                     primary_category = categories[0].get('name', categories[0].get('title', 'General'))
-                else:
-                    # If it's just a list of strings/names
+                elif isinstance(categories[0], str):
+                    # If it's a string, use it directly
                     primary_category = categories[0]
-            else:
-                primary_category = 'General'
+                else:
+                    # If it's an ID, we need to map it to a name
+                    # Common category mappings (expand as needed)
+                    category_map = {
+                        '2': 'Default Category',
+                        '3': 'Men',
+                        '4': 'Women',
+                        '5': 'Gear',
+                        '6': 'Training',
+                        '7': 'Sale',
+                        '8': 'What\'s New',
+                        '9': 'Tops',
+                        '10': 'Bottoms',
+                        '11': 'Hoodies & Sweatshirts',
+                        '12': 'Jackets',
+                        '13': 'Tees',
+                        '14': 'Tanks',
+                        '15': 'Hoodies & Sweatshirts',
+                        '16': 'T-Shirts',
+                        '17': 'Jackets & Coats',
+                        '18': 'Pants & Shorts',
+                        '19': 'Accessories',
+                        '20': 'Shoes & Footwear',
+                        '21': 'Bags & Luggage',
+                        '22': 'Fitness Equipment',
+                        '23': 'Electronics',
+                        '24': 'Home & Living'
+                    }
+                    primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
             
             suggestions.append({
                 'suggestion': product_name,
@@ -80,7 +146,7 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                 'price': formatted_price,
                 'raw_price': price,
                 'currency': currency,
-                'image': product.get('image_url', ''),
+                'image': _get_proper_image_url(product.get('image_url', '')),
                 'url': product.get('url', ''),
                 'category': primary_category,
                 'categories': categories
@@ -132,13 +198,12 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
     try:
         logger.info("Getting NLP-enhanced autocomplete suggestions", query=q)
         
-        # Try NLP-enhanced autocomplete first
+        # Try OpenAI-enhanced autocomplete first
         try:
-            from ..core.nlp_processor import AdvancedNLPProcessor
-            nlp_processor = AdvancedNLPProcessor()
+            from ..core.openai_nlp import process_query_with_openai
             
-            # Process query for typos and intent
-            intent, corrections = await nlp_processor.process_search_query(q)
+            # Process query for typos and intent using OpenAI
+            intent, corrections = await process_query_with_openai(q)
             
             # Use corrected query if available
             processed_query = intent.processed_query if intent else q
@@ -217,50 +282,71 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
             for item in suggestions_data:
                 item['nlp_enhanced'] = False
         
-        # Convert to response format
+        # Convert to response format - ensure Magento compatibility
         suggestions = []
         for item in suggestions_data:
-            # Create the AutocompleteResult with all required fields
-            suggestion_obj = AutocompleteResult(
-                suggestion=item['suggestion'],
-                type=item['type'],
-                count=item['count'],
-                title=item.get('title', item['suggestion']),
-                image=item.get('image', ''),
-                price=item.get('price', '$0.00'),
-                url=item.get('url', '#'),
-                category=item.get('category', 'General'),
-                sku=item.get('sku', ''),
-                id=item.get('id', 0)
-            )
+            # Create suggestion dict with all fields Magento expects
+            suggestion_dict = {
+                'suggestion': item['suggestion'],
+                'title': item.get('title', item['suggestion']),
+                'type': item['type'],
+                'count': item['count'],
+                'image': item.get('image', ''),
+                'price': item.get('price', '$0.00'),
+                'url': item.get('url', '#'),
+                'category': item.get('category', 'General'),
+                'sku': item.get('sku', ''),
+                'id': item.get('id', 0),
+                # AI enhancement metadata
+                'nlp_enhanced': item.get('nlp_enhanced', False),
+                'is_corrected': item.get('is_corrected', False),
+                'corrected_from': item.get('corrected_from', ''),
+                'corrected_to': item.get('corrected_to', ''),
+                'correction_confidence': item.get('correction_confidence', 0),
+                'correction_type': item.get('correction_type', ''),
+                'intent_type': item.get('intent_type', ''),
+                'intent_confidence': item.get('intent_confidence', 0)
+            }
             
-            # Add additional metadata as extra fields
-            if 'nlp_enhanced' in item:
-                suggestion_obj.__dict__['nlp_enhanced'] = item['nlp_enhanced']
-            if 'is_corrected' in item:
-                suggestion_obj.__dict__['is_corrected'] = item['is_corrected']
-            if 'corrected_from' in item:
-                suggestion_obj.__dict__['corrected_from'] = item['corrected_from']
-            if 'intent_type' in item:
-                suggestion_obj.__dict__['intent_type'] = item['intent_type']
-                
-            suggestions.append(suggestion_obj)
+            suggestions.append(suggestion_dict)
         
-        logger.info("Returning enhanced autocomplete suggestions", query=q, count=len(suggestions))
+        # Prepare metadata for Magento
+        autocomplete_metadata = {
+            'nlp_processing': any(s.get('nlp_enhanced', False) for s in suggestions),
+            'typo_corrections': sum(1 for s in suggestions if s.get('is_corrected', False)),
+            'intent_detection': any(s.get('intent_type') for s in suggestions),
+            'semantic_search': any(s.get('nlp_enhanced', False) for s in suggestions),
+            'total_suggestions': len(suggestions)
+        }
         
-        return AutocompleteResponse(
-            suggestions=suggestions,
-            query=q
-        )
+        logger.info("Returning enhanced autocomplete suggestions", 
+                   query=q, 
+                   count=len(suggestions),
+                   nlp_enhanced=autocomplete_metadata['nlp_processing'])
+        
+        # Return format that Magento expects
+        return {
+            'suggestions': suggestions,
+            'query': q,
+            'autocomplete_metadata': autocomplete_metadata
+        }
     except Exception as e:
         logger.error("Error getting autocomplete suggestions", error=str(e))
         # Return empty suggestions instead of raising to prevent API errors
-        return AutocompleteResponse(
-            suggestions=[],
-            query=q
-        )
+        return {
+            'suggestions': [],
+            'query': q,
+            'autocomplete_metadata': {
+                'nlp_processing': False,
+                'typo_corrections': 0,
+                'intent_detection': False,
+                'semantic_search': False,
+                'total_suggestions': 0
+            },
+            'error': str(e)
+        }
 
-@router.get("/", response_model=AutocompleteResponse)
+@router.get("/")
 async def get_autocomplete(
     q: str = Query(..., description="Partial search query"),
     limit: int = Query(10, description="Number of suggestions"),
@@ -269,7 +355,7 @@ async def get_autocomplete(
     """Get autocomplete suggestions via GET"""
     return await _process_autocomplete_request(q, limit)
 
-@router.post("/", response_model=AutocompleteResponse)
+@router.post("/")
 async def post_autocomplete(
     autocomplete_request: AutocompleteRequest = Body(...),
     request: Request = None
@@ -278,10 +364,20 @@ async def post_autocomplete(
     query = autocomplete_request.get_query()
     if not query:
         # Return empty suggestions if no query provided
-        return AutocompleteResponse(suggestions=[], query="")
+        return {
+            'suggestions': [],
+            'query': "",
+            'autocomplete_metadata': {
+                'nlp_processing': False,
+                'typo_corrections': 0,
+                'intent_detection': False,
+                'semantic_search': False,
+                'total_suggestions': 0
+            }
+        }
     return await _process_autocomplete_request(query, autocomplete_request.limit)
 
-@router.post("/form", response_model=AutocompleteResponse)
+@router.post("/form")
 async def post_autocomplete_form(
     q: str = Query(..., description="Partial search query"),
     limit: int = Query(10, description="Number of suggestions"),
@@ -289,3 +385,16 @@ async def post_autocomplete_form(
 ):
     """Get autocomplete suggestions via POST with query parameters (for form submissions)"""
     return await _process_autocomplete_request(q, limit)
+
+
+def _get_proper_image_url(image_url: str) -> str:
+    """Get proper image URL, avoiding placeholders"""
+    if not image_url or 'placeholder' in image_url.lower():
+        # Return a default product image or empty string
+        return ''
+    
+    # Ensure it's a full URL
+    if image_url.startswith('/'):
+        return f"https://magento-test.softdemonew.info{image_url}"
+    
+    return image_url

@@ -72,9 +72,10 @@ class AdvancedNLPProcessor:
         # Intent patterns
         self.intent_patterns = {
             'buy': [
-                r'\b(buy|purchase|get|order|shop for|need|want to buy)\b',
+                r'\b(buy|purchase|get|order|shop for|need|want|looking|find)\b',
                 r'\b(looking for|searching for|find me)\b.*\b(to buy|to purchase)\b',
-                r'\bi want\b.*\b(hoodie|shirt|product|item)\b'
+                r'\bi want\b.*\b(hoodie|shirt|product|item|comfortable|comfy)\b',
+                r'\b(want|need|looking for)\b.*\b(comfortable|comfy|good|nice|quality)\b'
             ],
             'compare': [
                 r'\b(compare|vs|versus|difference between|which is better)\b',
@@ -107,11 +108,20 @@ class AdvancedNLPProcessor:
         self.common_typos = {
             'hro': 'hero',
             'hodie': 'hoodie',
+            'hoddie': 'hoodie',
+            'hoody': 'hoodie',
             'tshrt': 'tshirt',
             'jens': 'jeans',
             'shose': 'shoes',
             'phon': 'phone',
-            'labtop': 'laptop'
+            'labtop': 'laptop',
+            'comfy': 'comfortable',
+            'comfortble': 'comfortable',
+            'buy': '',  # Remove filler words
+            'want': '',
+            'need': '',
+            'looking': '',
+            'search': ''
         }
         
         # Brand variations
@@ -239,7 +249,8 @@ class AdvancedNLPProcessor:
             # Combined score
             combined_score = (similarity * 0.7) + (lev_similarity * 0.3)
             
-            if combined_score > best_score and combined_score > 0.8:
+            # More lenient threshold for better typo correction
+            if combined_score > best_score and combined_score > 0.6:  # Lowered from 0.8 to 0.6
                 best_score = combined_score
                 best_match = term
         
@@ -339,10 +350,14 @@ class AdvancedNLPProcessor:
 
     def _expand_with_synonyms(self, query: str) -> str:
         """Expand query with synonyms for better matching"""
-        words = query.split()
+        words = query.lower().split()
         expanded_terms = []
         
-        for word in words:
+        # Remove common filler words first
+        filler_words = {'i', 'want', 'to', 'buy', 'a', 'an', 'the', 'some', 'looking', 'for', 'find', 'get', 'need'}
+        meaningful_words = [word for word in words if word not in filler_words]
+        
+        for word in meaningful_words:
             expanded_terms.append(word)
             
             # Add synonyms
@@ -356,6 +371,10 @@ class AdvancedNLPProcessor:
                     if other_synonyms:
                         expanded_terms.append(other_synonyms[0])
         
+        # If no meaningful words found, return original query
+        if not expanded_terms:
+            return query
+            
         return ' '.join(expanded_terms)
 
     def create_search_query(self, intent: SearchIntent) -> Dict[str, Any]:

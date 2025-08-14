@@ -239,7 +239,7 @@ class SearchService implements SearchInterface
         }
 
         try {
-            $endpoint = $this->helper->getServiceUrl('search', '/api/v1/index/');
+            $endpoint = $this->helper->getServiceUrl('search', '/api/v1/index/products');
             
             $requestData = [
                 'products' => $products

@@ -42,7 +42,7 @@ class SearchResponse(BaseModel):
     took: float
 
 
-@router.post("/", response_model=SearchResponse)
+@router.post("/")
 async def search_products(search_request: SearchRequest, request: Request):
     """Advanced semantic search with NLP processing"""
     import time
@@ -51,52 +51,80 @@ async def search_products(search_request: SearchRequest, request: Request):
     logger.info("Processing semantic search request", query=search_request.query)
     
     try:
-        # Try semantic search first
-        from ..core.nlp_processor import semantic_search_engine
+        # Use OpenAI-enhanced search
+        from ..core.openai_nlp import process_query_with_openai
+        from ..api.index import search_products as search_indexed_products
         
-        # Perform semantic search with NLP
-        search_results = await semantic_search_engine.search(
-            query=search_request.query,
-            limit=search_request.limit,
-            offset=search_request.offset
+        # Process query with OpenAI for better understanding
+        intent, corrections = await process_query_with_openai(search_request.query)
+        
+        # Use corrected/processed query for search
+        processed_query = intent.processed_query if intent else search_request.query
+        
+        # Search indexed products (using the function from index.py)
+        raw_results = search_indexed_products(
+            query=processed_query,
+            limit=search_request.limit
         )
         
         # Convert to SearchResult objects
         results = []
-        for result in search_results['results']:
+        for product in raw_results:
             results.append(SearchResult(
-                product_id=result['product_id'],
-                title=result['title'],
-                score=result['score'],
-                metadata=result['metadata']
+                product_id=str(product.get('id', '')),
+                title=product.get('name', ''),
+                score=1.0,  # Default score, could be enhanced with relevance scoring
+                metadata={
+                    'price': product.get('price', 0),
+                    'currency': product.get('currency', 'USD'),
+                    'image_url': product.get('image_url', ''),
+                    'url': product.get('url', ''),
+                    'categories': product.get('categories', []),
+                    'sku': product.get('sku', ''),
+                    'description': product.get('description', '')
+                }
             ))
         
         took = time.time() - start_time
         
         logger.info("Semantic search completed", 
                    query=search_request.query,
-                   intent=search_results.get('intent', {}).get('type'),
+                   intent=intent.intent_type,
                    results=len(results),
-                   corrections=len(search_results.get('corrections', [])),
+                   corrections=len(corrections),
                    took=took)
         
         # Enhanced response with NLP insights
         response = SearchResponse(
             results=results,
-            total=search_results['total'],
+            total=len(results),
             query=search_request.query,
             took=took
         )
         
-        # Add NLP metadata to response
-        response.__dict__['nlp_insights'] = {
-            'processed_query': search_results.get('processed_query'),
-            'intent': search_results.get('intent'),
-            'corrections': search_results.get('corrections'),
-            'semantic_search': True
+        # Add NLP metadata in format Magento expects
+        search_metadata = {
+            'nlp_enabled': True,
+            'semantic_search': True,
+            'typo_corrected': len(corrections) > 0,
+            'ai_enhanced': True,
+            'intent_type': intent.intent_type,
+            'processing_time': took,
+            'corrections': [
+                {
+                    'original': c.original,
+                    'corrected': c.corrected,
+                    'confidence': c.confidence,
+                    'type': c.correction_type
+                } for c in corrections
+            ] if corrections else []
         }
         
-        return response
+        # Add search_metadata to response dict
+        response_dict = response.dict()
+        response_dict['search_metadata'] = search_metadata
+        
+        return response_dict
         
     except Exception as e:
         logger.warning("Semantic search failed, falling back to basic search", error=str(e))
@@ -143,24 +171,46 @@ async def search_products(search_request: SearchRequest, request: Request):
                 took=took
             )
             
-            # Add fallback metadata
-            response.__dict__['nlp_insights'] = {
-                'processed_query': search_request.query,
+            # Add fallback metadata in Magento-compatible format
+            response_dict = response.dict()
+            response_dict['search_metadata'] = {
+                'nlp_enabled': False,
                 'semantic_search': False,
+                'typo_corrected': False,
+                'ai_enhanced': False,
+                'intent_type': 'fallback',
+                'processing_time': took,
+                'corrections': [],
                 'fallback_used': True
             }
             
-            return response
+            return response_dict
             
         except Exception as fallback_error:
             logger.error("Both semantic and fallback search failed", 
                         error=str(fallback_error), query=search_request.query)
-            return SearchResponse(
+            
+            response = SearchResponse(
                 results=[],
                 total=0,
                 query=search_request.query,
                 took=time.time() - start_time
             )
+            
+            # Add error metadata
+            response_dict = response.dict()
+            response_dict['search_metadata'] = {
+                'nlp_enabled': False,
+                'semantic_search': False,
+                'typo_corrected': False,
+                'ai_enhanced': False,
+                'intent_type': 'error',
+                'processing_time': time.time() - start_time,
+                'corrections': [],
+                'error': str(fallback_error)
+            }
+            
+            return response_dict
 
 
 @router.get("/")
