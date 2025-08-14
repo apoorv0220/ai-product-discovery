@@ -15,6 +15,20 @@ import structlog
 import json
 import os
 
+# Import updated schemas
+try:
+    from ..schemas.autocomplete_updated import (
+        AutocompleteSuggestion,
+        AutocompleteMetadata, 
+        AutocompleteResponse as UpdatedAutocompleteResponse,
+        AutocompleteRequest as UpdatedAutocompleteRequest,
+        AutocompleteErrorResponse
+    )
+    USE_UPDATED_SCHEMAS = True
+except ImportError:
+    # Fallback to existing schemas if new ones aren't available
+    USE_UPDATED_SCHEMAS = False
+
 logger = structlog.get_logger()
 router = APIRouter()
 

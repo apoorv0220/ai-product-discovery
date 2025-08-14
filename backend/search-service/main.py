@@ -110,9 +110,38 @@ settings = SearchServiceSettings()
 
 # Create FastAPI application
 app = FastAPI(
-    title="AI Product Discovery - Search Service",
-    description="AI-powered search and autocomplete service for e-commerce",
-    version="1.0.0",
+    title="AI Product Discovery Suite - Search Service",
+    description="""
+    **Advanced AI-Powered Search Service**
+    
+    ## 🚀 Key Features
+    - **OpenAI Integration**: Semantic understanding and intelligent typo correction
+    - **Natural Language Processing**: Understands queries like "I want comfortable hoodies"
+    - **Smart Typo Correction**: Automatically fixes "Hro Hoodie" → "Hero Hoodie" 
+    - **Intent Recognition**: Detects buy, compare, browse, and specific search intents
+    - **Real-time Autocomplete**: Instant suggestions with rich product metadata
+    - **Magento Integration**: Perfect synchronization with Magento frontend
+    
+    ## 🔌 Main Endpoints
+    - **GET/POST** `/api/v1/autocomplete/` - Get AI-enhanced autocomplete suggestions
+    - **POST** `/api/v1/search/` - Perform semantic product search with NLP
+    - **POST** `/api/v1/index/products` - Index products for intelligent search
+    - **GET** `/health` - Service health and status check
+    
+    ## 📊 Response Format
+    All APIs return standardized JSON with comprehensive AI enhancement metadata:
+    - Typo correction indicators and confidence scores
+    - Search intent detection results  
+    - Semantic processing information
+    - Performance metrics and timing data
+    
+    ## 🎯 AI Capabilities
+    - **Typo Tolerance**: Handles any misspelling using OpenAI
+    - **Semantic Search**: Extracts meaning from natural language
+    - **Intent Detection**: Understands user purchase intent
+    - **Fallback Protection**: Graceful degradation if AI services unavailable
+    """,
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan

@@ -13,6 +13,21 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import structlog
 
+# Import updated schemas
+try:
+    from ..schemas.search_updated import (
+        SearchResultItem,
+        SearchMetadata,
+        SearchResponse as UpdatedSearchResponse,
+        SearchRequest as UpdatedSearchRequest,
+        SearchCorrection,
+        SearchErrorResponse
+    )
+    USE_UPDATED_SCHEMAS = True
+except ImportError:
+    # Fallback to existing schemas if new ones aren't available
+    USE_UPDATED_SCHEMAS = False
+
 logger = structlog.get_logger()
 
 router = APIRouter()
