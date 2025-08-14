@@ -290,13 +290,8 @@ class SyncCatalog extends Command
             // Get product URL
             $productUrl = $product->getProductUrl();
             
-            // Get product image
-            $imageUrl = '';
-            try {
-                $imageUrl = $this->imageHelper->init($product, 'product_base_image')->getUrl();
-            } catch (\Exception $e) {
-                // If image fails, continue without it
-            }
+            // Get product image - try multiple sources
+            $imageUrl = $this->getProductImageUrl($product);
             
             // Get categories
             $categoryIds = $product->getCategoryIds();
@@ -319,8 +314,9 @@ class SyncCatalog extends Command
                 'name' => $product->getName(),
                 'description' => $product->getDescription() ?: $product->getShortDescription(),
                 'short_description' => $product->getShortDescription(),
-                'price' => (float)$product->getPrice(),
+                'price' => $this->getProductPrice($product, $store),
                 'special_price' => $product->getSpecialPrice() ? (float)$product->getSpecialPrice() : null,
+                'final_price' => $this->getProductFinalPrice($product, $store),
                 'currency' => $store->getCurrentCurrency()->getCode(),
                 'url' => $productUrl,
                 'image_url' => $imageUrl,
@@ -392,5 +388,111 @@ class SyncCatalog extends Command
         }
     }
 
+    /**
+     * Get product price with proper calculation
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store $store
+     * @return float
+     */
+    private function getProductPrice($product, $store = null)
+    {
+        try {
+            // Try different price methods
+            $price = $product->getPrice();
+            
+            if (!$price || $price <= 0) {
+                // Try final price
+                $price = $product->getFinalPrice();
+            }
+            
+            if (!$price || $price <= 0) {
+                // Try price index
+                $priceModel = $product->getPriceModel();
+                $price = $priceModel->getPrice($product);
+            }
+            
+            if (!$price || $price <= 0) {
+                // Try formatted price helper
+                $priceText = $this->priceHelper->currency($product->getFinalPrice(), false, false);
+                $price = (float)filter_var($priceText, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+            }
+            
+            return (float)$price;
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Get product final price
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store $store
+     * @return float
+     */
+    private function getProductFinalPrice($product, $store = null)
+    {
+        try {
+            return (float)$product->getFinalPrice();
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Get product image URL with fallback options
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @return string
+     */
+    private function getProductImageUrl($product)
+    {
+        $imageUrl = '';
+        
+        try {
+            // Try base image first
+            $imageUrl = $this->imageHelper->init($product, 'product_base_image')->getUrl();
+            
+            // Check if it's a placeholder image
+            if (!$imageUrl || strpos($imageUrl, 'placeholder') !== false) {
+                // Try small image
+                $imageUrl = $this->imageHelper->init($product, 'product_small_image')->getUrl();
+            }
+            
+            // If still placeholder or empty, try thumbnail
+            if (!$imageUrl || strpos($imageUrl, 'placeholder') !== false) {
+                $imageUrl = $this->imageHelper->init($product, 'product_thumbnail')->getUrl();
+            }
+            
+            // Try getting image from media gallery
+            if (!$imageUrl || strpos($imageUrl, 'placeholder') !== false) {
+                $galleryImages = $product->getMediaGalleryImages();
+                if ($galleryImages && count($galleryImages) > 0) {
+                    foreach ($galleryImages as $image) {
+                        if ($image->getUrl() && strpos($image->getUrl(), 'placeholder') === false) {
+                            $imageUrl = $image->getUrl();
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Last resort: try image attribute directly
+            if (!$imageUrl || strpos($imageUrl, 'placeholder') !== false) {
+                $imageAttribute = $product->getImage();
+                if ($imageAttribute && $imageAttribute !== 'no_selection') {
+                    $mediaUrl = $this->storeManager->getStore()->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_MEDIA);
+                    $imageUrl = $mediaUrl . 'catalog/product' . $imageAttribute;
+                }
+            }
+            
+        } catch (\Exception $e) {
+            // If all fails, return empty string
+            $imageUrl = '';
+        }
+        
+        return $imageUrl;
+    }
 
 }

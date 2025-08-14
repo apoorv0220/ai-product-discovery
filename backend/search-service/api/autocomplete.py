@@ -87,25 +87,36 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                         break
         
         if match_found:
-            # Format price for display
+            # Format price for display - try multiple price fields
             price = product.get('price', 0)
+            final_price = product.get('final_price', 0)
             special_price = product.get('special_price')
             currency = product.get('currency', 'USD')
             
-            # Use special price if available, otherwise regular price
-            display_price = special_price if special_price and special_price > 0 else price
+            # Priority: special_price > final_price > price
+            display_price = 0
+            
+            if special_price and special_price > 0:
+                display_price = special_price
+            elif final_price and final_price > 0:
+                display_price = final_price
+            elif price and price > 0:
+                display_price = price
             
             if display_price and display_price > 0:
                 formatted_price = f"${display_price:.2f}"
             else:
-                # Try to extract price from other fields
-                price_str = str(product.get('final_price', product.get('regular_price', '')))
-                if price_str and price_str != '0' and price_str != '':
-                    try:
-                        extracted_price = float(price_str)
-                        formatted_price = f"${extracted_price:.2f}"
-                    except (ValueError, TypeError):
-                        formatted_price = "Price on request"
+                # Try to extract price from other possible fields
+                for field in ['regular_price', 'base_price', 'min_price']:
+                    price_str = str(product.get(field, ''))
+                    if price_str and price_str != '0' and price_str != '' and price_str != 'None':
+                        try:
+                            extracted_price = float(price_str)
+                            if extracted_price > 0:
+                                formatted_price = f"${extracted_price:.2f}"
+                                break
+                        except (ValueError, TypeError):
+                            continue
                 else:
                     formatted_price = "Price on request"
             
@@ -124,6 +135,7 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                     # If it's an ID, we need to map it to a name
                     # Common category mappings (expand as needed)
                     category_map = {
+                        '1': 'Root Catalog',
                         '2': 'Default Category',
                         '3': 'Men',
                         '4': 'Women',
@@ -137,7 +149,7 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                         '12': 'Jackets',
                         '13': 'Tees',
                         '14': 'Tanks',
-                        '15': 'Hoodies & Sweatshirts',
+                        '15': 'Hoodies & Sweatshirts',  # Main hoodie category
                         '16': 'T-Shirts',
                         '17': 'Jackets & Coats',
                         '18': 'Pants & Shorts',
@@ -146,7 +158,12 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                         '21': 'Bags & Luggage',
                         '22': 'Fitness Equipment',
                         '23': 'Electronics',
-                        '24': 'Home & Living'
+                        '24': 'Home & Living',
+                        '25': 'Watches',
+                        '26': 'Fitness',
+                        '27': 'Bottoms',
+                        '28': 'Pants',
+                        '29': 'Shorts'
                     }
                     primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
             
@@ -214,7 +231,12 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
         
         # Try OpenAI-enhanced autocomplete first
         try:
-            from ..core.openai_nlp import process_query_with_openai
+            import sys
+            import os
+            # Add the search-service directory to Python path
+            search_service_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            sys.path.insert(0, search_service_dir)
+            from core.openai_nlp import process_query_with_openai
             
             # Process query for typos and intent using OpenAI
             intent, corrections = await process_query_with_openai(q)

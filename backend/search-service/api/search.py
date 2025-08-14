@@ -10,7 +10,8 @@ AI Product Discovery Suite - Search Service API
 
 from fastapi import APIRouter, Request, Query
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
+from pydantic import validator
 import structlog
 
 # Import updated schemas
@@ -36,9 +37,16 @@ router = APIRouter()
 class SearchRequest(BaseModel):
     """Search request model"""
     query: str
-    filters: Optional[Dict[str, Any]] = None
+    filters: Optional[Union[Dict[str, Any], List]] = None
     limit: int = 20
     offset: int = 0
+    
+    @validator('filters', pre=True)
+    def normalize_filters(cls, v):
+        """Convert filters array to dict if needed"""
+        if isinstance(v, list):
+            return {}
+        return v or {}
 
 
 class SearchResult(BaseModel):
@@ -67,7 +75,12 @@ async def search_products(search_request: SearchRequest, request: Request):
     
     try:
         # Use OpenAI-enhanced search
-        from ..core.openai_nlp import process_query_with_openai
+        import sys
+        import os
+        # Add the search-service directory to Python path
+        search_service_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.insert(0, search_service_dir)
+        from core.openai_nlp import process_query_with_openai
         from ..api.index import search_products as search_indexed_products
         
         # Process query with OpenAI for better understanding
