@@ -27,7 +27,7 @@ from shared.config.settings import RecommendationServiceSettings
 from shared.database.base import init_database, close_database
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import recommendations, health, analytics
+from api import recommendations, health, analytics, sync
 from core.engine import RecommendationEngine
 from core.ml_models import MLModelManager
 
@@ -175,6 +175,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
+app.include_router(sync.router, prefix="/api/v1/sync", tags=["sync"])
 
 
 @app.get("/")

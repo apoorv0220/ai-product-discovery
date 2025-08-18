@@ -525,6 +525,12 @@ class Data extends AbstractHelper
     public function getServiceUrl(string $service, string $endpoint = '', $storeId = null): string
     {
         $baseUrl = $this->getApiBaseUrl($storeId);
+        
+        // Use localhost if base URL is not configured or for local development
+        if (empty($baseUrl) || $baseUrl === 'http://localhost' || strpos($baseUrl, 'localhost') !== false) {
+            $baseUrl = 'http://localhost';
+        }
+        
         $port = $this->servicePorts[$service] ?? 7001;
         
         return $baseUrl . ':' . $port . $endpoint;

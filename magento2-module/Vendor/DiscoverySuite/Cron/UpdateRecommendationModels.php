@@ -122,7 +122,7 @@ class UpdateRecommendationModels
                 foreach ($interactionData as $interaction) {
                     $this->recommendationService->trackInteraction(
                         $interaction['user_id'],
-                        $interaction['product_id'],
+                        (int)$interaction['product_id'],
                         $interaction['action'],
                         $interaction['context']
                     );

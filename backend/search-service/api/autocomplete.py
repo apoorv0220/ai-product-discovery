@@ -14,6 +14,8 @@ from typing import List, Optional
 import structlog
 import json
 import os
+import re
+from rapidfuzz import fuzz, process
 
 # Import updated schemas
 try:
@@ -35,6 +37,14 @@ router = APIRouter()
 # Use the same storage as the index API
 PRODUCTS_FILE = "/tmp/products_index.json"
 
+# Import advanced spell checker
+try:
+    from ..core.advanced_spell_checker import spell_checker
+    SPELL_CHECKER_AVAILABLE = True
+except ImportError:
+    SPELL_CHECKER_AVAILABLE = False
+    logger.warning("Advanced spell checker not available")
+
 def load_products():
     """Load products from storage"""
     try:
@@ -46,45 +56,88 @@ def load_products():
     return {}
 
 def get_autocomplete_suggestions(query: str, limit: int = 10):
-    """Get real autocomplete suggestions from indexed products"""
+    """Get real autocomplete suggestions from indexed products with advanced spell correction"""
     # Load current products
     products = load_products()
     
     if not query.strip():
         return []
     
-    query_lower = query.lower()
+    original_query = query.strip()
+    query_lower = original_query.lower()
     suggestions = []
+    corrected_query = original_query
+    spell_corrections = []
     
     # Check if we have any products
     if not products:
         logger.warning("No products found in index for autocomplete", query=query)
         return []
     
+    # Apply advanced spell correction
+    if SPELL_CHECKER_AVAILABLE and len(original_query) >= 2:
+        correction_result = spell_checker.correct_spelling(original_query, threshold=0.75)
+        if correction_result['corrections']:
+            corrected_query = correction_result['corrected_query']
+            query_lower = corrected_query.lower()
+            spell_corrections = correction_result['corrections']
+            logger.info("Applied spell corrections", 
+                       original=original_query, 
+                       corrected=corrected_query,
+                       corrections=len(spell_corrections))
+    
+    # Enhanced matching with both original and corrected queries
+    all_suggestions = []
+    
     for product_id, product in products.items():
         product_name = product.get('name', '')
         searchable_text = product.get('searchable_text', product_name.lower())
         product_description = product.get('description', '')
         
-        # Check if query matches product name, searchable text, or description
-        # Also check individual words for partial matching
-        query_words = query_lower.split()
         name_lower = product_name.lower()
         desc_lower = product_description.lower()
         
         match_found = False
+        match_score = 0
+        is_corrected = corrected_query != original_query
         
-        # Direct substring match
-        if query_lower in name_lower or query_lower in searchable_text or query_lower in desc_lower:
-            match_found = True
+        # Try both original and corrected queries
+        queries_to_try = [query_lower]
+        if is_corrected:
+            queries_to_try.append(corrected_query.lower())
         
-        # Individual word matching for better semantic search
-        if not match_found:
+        for current_query in queries_to_try:
+            query_words = current_query.split()
+            
+            # Method 1: Direct substring match (highest score)
+            if current_query in name_lower:
+                match_found = True
+                match_score = max(match_score, 100)
+                break
+            elif current_query in searchable_text or current_query in desc_lower:
+                match_found = True
+                match_score = max(match_score, 90)
+                break
+            
+            # Method 2: Fuzzy matching for product names (high score)
+            name_similarity = fuzz.partial_ratio(current_query, name_lower)
+            if name_similarity >= 75:
+                match_found = True
+                match_score = max(match_score, name_similarity)
+                break
+            
+            # Method 3: Individual word matching
+            word_matches = 0
             for word in query_words:
                 if len(word) > 2:  # Skip very short words
-                    if word in name_lower or word in searchable_text or word in desc_lower:
-                        match_found = True
-                        break
+                    if word in name_lower:
+                        word_matches += 2  # Higher weight for name matches
+                    elif word in searchable_text or word in desc_lower:
+                        word_matches += 1
+            
+            if word_matches > 0:
+                match_found = True
+                match_score = max(match_score, min(80, word_matches * 20))
         
         if match_found:
             # Format price for display - try multiple price fields
@@ -125,49 +178,62 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
             primary_category = 'General'
             
             if categories:
-                # If categories is a list of dicts with name/id, extract name
+                # Complete Magento category mappings - actual from database
+                category_map = {
+                    '1': 'Root Catalog',
+                    '2': 'Default Category', 
+                    '3': 'Gear',
+                    '4': 'Bags',
+                    '5': 'Fitness Equipment',
+                    '6': 'Watches',
+                    '7': 'Collections',
+                    '8': 'New Luma Yoga Collection',
+                    '9': 'Training',
+                    '10': 'Video Download',
+                    '11': 'Men',
+                    '12': 'Tops',
+                    '13': 'Bottoms',
+                    '14': 'Jackets',
+                    '15': 'Hoodies & Sweatshirts',
+                    '16': 'Tees',
+                    '17': 'Tanks',
+                    '18': 'Pants',
+                    '19': 'Shorts',
+                    '20': 'Women',
+                    '21': 'Tops',
+                    '22': 'Bottoms',
+                    '23': 'Jackets',
+                    '24': 'Hoodies & Sweatshirts',
+                    '25': 'Tees',
+                    '26': 'Bras & Tanks',
+                    '27': 'Pants',
+                    '28': 'Shorts',
+                    '29': 'Promotions',
+                    '30': 'Women Sale',
+                    '31': 'Men Sale',
+                    '32': 'Pants',
+                    '33': 'Tees',
+                    '34': 'Erin Recommends',
+                    '35': 'Performance Fabrics',
+                    '36': 'Eco Friendly',
+                    '37': 'Sale',
+                    '38': 'What\'s New',
+                    '39': 'Performance Sportswear New',
+                    '40': 'Eco Collection New'
+                }
+                
+                # Handle different category formats
                 if isinstance(categories[0], dict):
+                    # Category is a dict with name/id
                     primary_category = categories[0].get('name', categories[0].get('title', 'General'))
                 elif isinstance(categories[0], str):
-                    # If it's a string, use it directly
-                    primary_category = categories[0]
+                    # Category is a string ID, map it to name
+                    primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
                 else:
-                    # If it's an ID, we need to map it to a name
-                    # Common category mappings (expand as needed)
-                    category_map = {
-                        '1': 'Root Catalog',
-                        '2': 'Default Category',
-                        '3': 'Men',
-                        '4': 'Women',
-                        '5': 'Gear',
-                        '6': 'Training',
-                        '7': 'Sale',
-                        '8': 'What\'s New',
-                        '9': 'Tops',
-                        '10': 'Bottoms',
-                        '11': 'Hoodies & Sweatshirts',
-                        '12': 'Jackets',
-                        '13': 'Tees',
-                        '14': 'Tanks',
-                        '15': 'Hoodies & Sweatshirts',  # Main hoodie category
-                        '16': 'T-Shirts',
-                        '17': 'Jackets & Coats',
-                        '18': 'Pants & Shorts',
-                        '19': 'Accessories',
-                        '20': 'Shoes & Footwear',
-                        '21': 'Bags & Luggage',
-                        '22': 'Fitness Equipment',
-                        '23': 'Electronics',
-                        '24': 'Home & Living',
-                        '25': 'Watches',
-                        '26': 'Fitness',
-                        '27': 'Bottoms',
-                        '28': 'Pants',
-                        '29': 'Shorts'
-                    }
+                    # Fallback for any other type
                     primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
             
-            suggestions.append({
+            all_suggestions.append({
                 'suggestion': product_name,
                 'title': product_name,
                 'type': 'product',
@@ -180,17 +246,32 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                 'image': _get_proper_image_url(product.get('image_url', '')),
                 'url': product.get('url', ''),
                 'category': primary_category,
-                'categories': categories
+                'categories': categories,
+                'match_score': match_score,
+                'nlp_enhanced': True,
+                'is_corrected': is_corrected,
+                'corrected_from': original_query if is_corrected else '',
+                'corrected_to': corrected_query if is_corrected else '',
+                'correction_confidence': correction_result.get('confidence', 0) if SPELL_CHECKER_AVAILABLE and is_corrected else 0,
+                'correction_type': 'spell_check' if is_corrected else '',
+                'intent_type': 'specific',
+                'intent_confidence': 0.8 if match_score >= 90 else 0.6
             })
     
-    # Sort by relevance (how close the match is to the beginning of the name)
+    # Sort by match score and relevance
     def relevance_score(item):
         name = item['suggestion'].lower()
-        pos = name.find(query_lower)
-        return (-pos if pos >= 0 else 999, len(name))  # Prefer matches at start, then shorter names
+        # Use corrected query if available, otherwise original
+        search_query = corrected_query.lower() if corrected_query != original_query else query_lower
+        pos = name.find(search_query)
+        match_score = item.get('match_score', 0)
+        
+        # Primary sort by match score (descending), then by position (ascending), then by name length (ascending)
+        return (-match_score, pos if pos >= 0 else 999, len(name))
     
-    suggestions.sort(key=relevance_score)
-    return suggestions[:limit]
+    all_suggestions.sort(key=relevance_score)
+    suggestions = all_suggestions[:limit]
+    return suggestions
 
 
 class AutocompleteResult(BaseModel):

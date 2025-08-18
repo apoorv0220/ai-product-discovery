@@ -187,55 +187,7 @@ services:
       retries: 5
       start_period: 60s
 
-  # Celery Worker (for background tasks)
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: shared/Dockerfile.celery
-    container_name: ai_discovery_celery
-    command: celery -A shared.celery.app worker --loglevel=info --concurrency=2
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
-      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
-      - SECRET_KEY=${SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
-  # Celery Flower (monitoring)
-  celery-flower:
-    build:
-      context: ./backend
-      dockerfile: shared/Dockerfile.celery
-    container_name: ai_discovery_flower
-    command: celery -A shared.celery.app flower --port=5555
-    ports:
-      - "${FLOWER_EXTERNAL_PORT:-7006}:5555"
-    environment:
-      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
-      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
-      - FLOWER_BASIC_AUTH=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin123}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      celery-worker:
-        condition: service_started
 
   # Elasticsearch (for search indexing)
   elasticsearch:

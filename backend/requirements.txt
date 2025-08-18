@@ -30,6 +30,10 @@ nltk==3.9.1
 textdistance==4.6.3
 spacy==3.8.3
 scipy==1.15.0
+openai==1.99.9
+python-Levenshtein==0.27.1
+rapidfuzz==3.13.0
+spellchecker==0.4
 
 # Task Queue
 celery[redis]==5.4.0

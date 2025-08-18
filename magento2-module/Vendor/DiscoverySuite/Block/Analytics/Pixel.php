@@ -20,6 +20,7 @@ use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Framework\Json\Helper\Data as JsonHelper;
 use Magento\Framework\Registry;
 use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Framework\Locale\ResolverInterface;
 
 class Pixel extends Template
 {
@@ -49,6 +50,11 @@ class Pixel extends Template
     private $checkoutSession;
 
     /**
+     * @var ResolverInterface
+     */
+    private $_localeResolver;
+
+    /**
      * Constructor
      *
      * @param Context $context
@@ -57,6 +63,7 @@ class Pixel extends Template
      * @param JsonHelper $jsonHelper
      * @param Registry $registry
      * @param CheckoutSession $checkoutSession
+     * @param ResolverInterface $localeResolver
      * @param array $data
      */
     public function __construct(
@@ -66,6 +73,7 @@ class Pixel extends Template
         JsonHelper $jsonHelper,
         Registry $registry,
         CheckoutSession $checkoutSession,
+        ResolverInterface $localeResolver,
         array $data = []
     ) {
         $this->helper = $helper;
@@ -73,6 +81,7 @@ class Pixel extends Template
         $this->jsonHelper = $jsonHelper;
         $this->registry = $registry;
         $this->checkoutSession = $checkoutSession;
+        $this->_localeResolver = $localeResolver;
         parent::__construct($context, $data);
     }
 

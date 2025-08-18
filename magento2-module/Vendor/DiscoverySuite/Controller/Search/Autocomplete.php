@@ -133,11 +133,11 @@ class Autocomplete implements HttpGetActionInterface, HttpPostActionInterface
                     'title' => $suggestion['suggestion'] ?? $suggestion['title'] ?? '',
                     'image' => $this->getFullImageUrl($suggestion['image'] ?? ''),
                     'price' => $this->formatPrice($suggestion['price'] ?? '$0.00'),
-                    'url' => $this->getProductUrl($suggestion['url'] ?? '', $suggestion['id'] ?? 0),
+                    'url' => $this->getProductUrl($suggestion['url'] ?? '', (int)($suggestion['id'] ?? 0)),
                     'category' => $suggestion['category'] ?? 'General',
                     'type' => $suggestion['type'] ?? 'product',
                     'sku' => $suggestion['sku'] ?? '',
-                    'id' => $suggestion['id'] ?? 0,
+                    'id' => (int)($suggestion['id'] ?? 0),
                     'ai_enhanced' => true,
                     'is_corrected' => $suggestion['is_corrected'] ?? false,
                     'correction_confidence' => $suggestion['correction_confidence'] ?? 0

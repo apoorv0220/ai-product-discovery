@@ -20,6 +20,7 @@ use Magento\Framework\View\Element\Template\Context;
 use Magento\Customer\Model\Session as CustomerSession;
 use Magento\Framework\Json\Helper\Data as JsonHelper;
 use Magento\Checkout\Model\Session as CheckoutSession;
+use Magento\Framework\Locale\ResolverInterface;
 
 class Widget extends Template
 {
@@ -49,6 +50,11 @@ class Widget extends Template
     private $checkoutSession;
 
     /**
+     * @var ResolverInterface
+     */
+    private $_localeResolver;
+
+    /**
      * Constructor
      *
      * @param Context $context
@@ -57,6 +63,7 @@ class Widget extends Template
      * @param CustomerSession $customerSession
      * @param JsonHelper $jsonHelper
      * @param CheckoutSession $checkoutSession
+     * @param ResolverInterface $localeResolver
      * @param array $data
      */
     public function __construct(
@@ -66,6 +73,7 @@ class Widget extends Template
         CustomerSession $customerSession,
         JsonHelper $jsonHelper,
         CheckoutSession $checkoutSession,
+        ResolverInterface $localeResolver,
         array $data = []
     ) {
         $this->assistantService = $assistantService;
@@ -73,6 +81,7 @@ class Widget extends Template
         $this->customerSession = $customerSession;
         $this->jsonHelper = $jsonHelper;
         $this->checkoutSession = $checkoutSession;
+        $this->_localeResolver = $localeResolver;
         parent::__construct($context, $data);
     }
 
