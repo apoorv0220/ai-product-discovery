@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 /**
- * AI Product Discovery Suite - Product Page Layout
+ * AI Product Discovery Suite - Cart Page Layout
  *
  * @category    Vendor
  * @package     Vendor_DiscoverySuite
@@ -13,26 +13,26 @@
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <body>
         <referenceContainer name="content">
-            <!-- Add product recommendations after product details -->
-            <block class="Vendor\DiscoverySuite\Block\Recommendations\Product" 
-                   name="discovery.product.recommendations" 
-                   template="Vendor_DiscoverySuite::recommendations/product.phtml"
-                   after="product.info.details">
+            <!-- Add cart recommendations after cart items -->
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Cart" 
+                   name="discovery.cart.recommendations" 
+                   template="Vendor_DiscoverySuite::recommendations/cart.phtml"
+                   after="checkout.cart.form">
                 <arguments>
-                    <argument name="cache_lifetime" xsi:type="number">1800</argument>
+                    <argument name="cache_lifetime" xsi:type="number">900</argument>
                     <argument name="cache_tags" xsi:type="array">
                         <item name="discovery_recommendations" xsi:type="string">discovery_recommendations</item>
-                        <item name="catalog_product" xsi:type="string">catalog_product</item>
+                        <item name="checkout_cart" xsi:type="string">checkout_cart</item>
                     </argument>
                 </arguments>
             </block>
         </referenceContainer>
         
-        <!-- Add tracking script for product view -->
+        <!-- Add tracking script for cart interactions -->
         <referenceContainer name="before.body.end">
             <block class="Magento\Framework\View\Element\Template" 
-                   name="discovery.product.tracking" 
-                   template="Vendor_DiscoverySuite::tracking/product_view.phtml"/>
+                   name="discovery.cart.tracking" 
+                   template="Vendor_DiscoverySuite::tracking/cart_view.phtml"/>
         </referenceContainer>
     </body>
 </page>

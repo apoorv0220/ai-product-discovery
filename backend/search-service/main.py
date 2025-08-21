@@ -26,7 +26,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from shared.config.settings import SearchServiceSettings
 from shared.database.base import init_database, close_database
-from api import search, autocomplete, index, health
+from api import search, autocomplete, index, health, tracking
 from core.elasticsearch_client import ElasticsearchManager
 from core.ml_engine import MLEngine
 
@@ -204,6 +204,7 @@ app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(autocomplete.router, prefix="/api/v1/autocomplete", tags=["autocomplete"])
 app.include_router(index.router, prefix="/api/v1/index", tags=["indexing"])
+app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 
 
 @app.get("/")

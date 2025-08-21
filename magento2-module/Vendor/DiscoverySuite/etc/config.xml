@@ -16,7 +16,7 @@
         <discovery_suite_config>
             <general>
                 <enabled>1</enabled>
-                <api_base_url>http://ai-product-discovery.softdemonew.info</api_base_url>
+                <api_base_url>http://localhost</api_base_url>
                 <api_key></api_key>
                 <timeout>30</timeout>
                 <debug_mode>0</debug_mode>

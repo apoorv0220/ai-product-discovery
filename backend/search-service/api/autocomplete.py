@@ -299,16 +299,18 @@ class AutocompleteRequest(BaseModel):
     q: Optional[str] = None
     query: Optional[str] = None  # Alternative field name for compatibility
     limit: Optional[int] = 10
+    user_id: Optional[str] = None  # User ID for personalization
+    session_id: Optional[str] = None  # Session ID for anonymous personalization
     
     def get_query(self) -> str:
         """Get the query value from either q or query field"""
         return self.q or self.query or ""
 
 
-async def _process_autocomplete_request(q: str, limit: int = 10):
-    """Internal function to process autocomplete requests with NLP enhancement"""
+async def _process_autocomplete_request(q: str, limit: int = 10, user_id: str = None, session_id: str = None):
+    """Internal function to process autocomplete requests with NLP enhancement and personalization"""
     try:
-        logger.info("Getting NLP-enhanced autocomplete suggestions", query=q)
+        logger.info("Getting NLP-enhanced and personalized autocomplete suggestions", query=q)
         
         # Try OpenAI-enhanced autocomplete first
         try:
@@ -318,6 +320,7 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
             search_service_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys.path.insert(0, search_service_dir)
             from core.openai_nlp import process_query_with_openai
+            from core.personalized_search import personalized_search_engine
             
             # Process query for typos and intent using OpenAI
             intent, corrections = await process_query_with_openai(q)
@@ -327,6 +330,23 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
             
             # Get suggestions using processed query
             suggestions_data = get_autocomplete_suggestions(processed_query, limit)
+            
+            # Apply personalized ranking to suggestions
+            if user_id or session_id:
+                try:
+                    logger.info(f"Applying personalized ranking with user_id={user_id}, session_id={session_id}")
+                    original_count = len(suggestions_data)
+                    suggestions_data = await personalized_search_engine.apply_personalized_ranking(
+                        suggestions_data, user_id, session_id, q
+                    )
+                    logger.info(f"Applied personalized ranking to {len(suggestions_data)} suggestions (was {original_count})")
+                    # Log first few results for debugging
+                    for i, item in enumerate(suggestions_data[:3]):
+                        logger.info(f"Result {i}: {item.get('suggestion', 'N/A')} - score: {item.get('final_score', 'N/A')}, weight: {item.get('personalization_weight', 'N/A')}")
+                except Exception as e:
+                    logger.warning(f"Failed to apply personalized ranking: {str(e)}")
+                    import traceback
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
             
             # If original query had typos, prioritize corrected suggestions
             if corrections and len(corrections) > 0:
@@ -467,17 +487,19 @@ async def _process_autocomplete_request(q: str, limit: int = 10):
 async def get_autocomplete(
     q: str = Query(..., description="Partial search query"),
     limit: int = Query(10, description="Number of suggestions"),
+    user_id: str = Query(None, description="User ID for personalization"),
+    session_id: str = Query(None, description="Session ID for anonymous personalization"),
     request: Request = None
 ):
-    """Get autocomplete suggestions via GET"""
-    return await _process_autocomplete_request(q, limit)
+    """Get autocomplete suggestions via GET with personalization"""
+    return await _process_autocomplete_request(q, limit, user_id, session_id)
 
 @router.post("/")
 async def post_autocomplete(
     autocomplete_request: AutocompleteRequest = Body(...),
     request: Request = None
 ):
-    """Get autocomplete suggestions via POST with JSON body"""
+    """Get autocomplete suggestions via POST with JSON body and personalization"""
     query = autocomplete_request.get_query()
     if not query:
         # Return empty suggestions if no query provided
@@ -492,7 +514,12 @@ async def post_autocomplete(
                 'total_suggestions': 0
             }
         }
-    return await _process_autocomplete_request(query, autocomplete_request.limit)
+    return await _process_autocomplete_request(
+        query, 
+        autocomplete_request.limit, 
+        autocomplete_request.user_id, 
+        autocomplete_request.session_id
+    )
 
 @router.post("/form")
 async def post_autocomplete_form(

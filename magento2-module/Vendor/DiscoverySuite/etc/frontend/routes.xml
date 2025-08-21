@@ -13,5 +13,11 @@
         <route id="discovery" frontName="discovery">
             <module name="Vendor_DiscoverySuite" />
         </route>
+        <route id="discovery_interactions" frontName="discovery_interactions">
+            <module name="Vendor_DiscoverySuite" />
+        </route>
+        <route id="discovery_assistant" frontName="discovery_assistant">
+            <module name="Vendor_DiscoverySuite" />
+        </route>
     </router>
 </config>

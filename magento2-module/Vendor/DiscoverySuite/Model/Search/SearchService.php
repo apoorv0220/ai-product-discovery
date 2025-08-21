@@ -59,7 +59,7 @@ class SearchService implements SearchInterface
      * @param array $filters
      * @return array
      */
-    public function search(string $query, int $limit = 20, int $offset = 0, array $filters = []): array
+    public function search(string $query, int $limit = 20, int $offset = 0, array $filters = [], string $userId = null): array
     {
         if (!$this->helper->isSearchEnabled()) {
             return [];
@@ -80,7 +80,7 @@ class SearchService implements SearchInterface
         try {
             $endpoint = $this->helper->getServiceUrl('search', '/api/v1/search/');
             
-            $requestData = [
+                        $requestData = [
                 'query' => $query,
                 'limit' => $limit,
                 'offset' => $offset,
@@ -241,7 +241,7 @@ class SearchService implements SearchInterface
         try {
             $endpoint = $this->helper->getServiceUrl('search', '/api/v1/index/products');
             
-            $requestData = [
+                        $requestData = [
                 'products' => $products
             ];
 

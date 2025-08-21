@@ -1,0 +1,89 @@
+<?php
+/**
+ * AI Product Discovery Suite - Product View Tracking
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ */
+
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+$registry = $objectManager->get('\Magento\Framework\Registry');
+$discoveryHelper = $objectManager->get('\Vendor\DiscoverySuite\Helper\Data');
+$customerSession = $objectManager->get('\Magento\Customer\Model\Session');
+
+$currentProduct = $registry->registry('current_product');
+
+if (!$currentProduct || !$discoveryHelper->isEnabled()) {
+    return;
+}
+
+$productId = $currentProduct->getId();
+$userId = $customerSession->isLoggedIn() ? 
+    'customer_' . $customerSession->getCustomerId() : 
+    'guest_' . session_id();
+?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Track product view
+    const trackingData = {
+        user_id: '<?= $block->escapeJs($userId) ?>',
+        product_id: '<?= $block->escapeJs($productId) ?>',
+        interaction_type: 'view',
+        event_type: 'view',
+        context: 'product_detail',
+        timestamp: new Date().toISOString(),
+        product_data: {
+            name: '<?= $block->escapeJs($currentProduct->getName()) ?>',
+            price: <?= $currentProduct->getPrice() ?: 0 ?>,
+            sku: '<?= $block->escapeJs($currentProduct->getSku()) ?>',
+            categories: <?= json_encode($currentProduct->getCategoryIds()) ?>
+        }
+    };
+    
+    // Send tracking data
+    fetch('<?= $block->escapeJs($block->getUrl('discovery/recommendations/track')) ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify(trackingData)
+    }).catch(function(error) {
+        console.log('Product view tracking error:', error);
+    });
+    
+    // Track time spent on page
+    let startTime = Date.now();
+    let tracked = false;
+    
+    function trackTimeSpent() {
+        if (tracked) return;
+        tracked = true;
+        
+        const timeSpent = Math.round((Date.now() - startTime) / 1000);
+        
+        fetch('<?= $block->escapeJs($block->getUrl('discovery/analytics/track')) ?>', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                user_id: '<?= $block->escapeJs($userId) ?>',
+                event_type: 'time_on_page',
+                event_data: {
+                    product_id: '<?= $block->escapeJs($productId) ?>',
+                    time_spent: timeSpent,
+                    page_type: 'product_detail'
+                }
+            })
+        }).catch(function(error) {
+            console.log('Time tracking error:', error);
+        });
+    }
+    
+    // Track when user leaves page or after 30 seconds
+    window.addEventListener('beforeunload', trackTimeSpent);
+    setTimeout(trackTimeSpent, 30000);
+});
+</script>

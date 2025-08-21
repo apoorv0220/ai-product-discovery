@@ -171,9 +171,26 @@ class Results extends Template
      *
      * @return float
      */
-    public function getResponseTime(): float
+    public function getResponseTime()
     {
         $results = $this->getSearchResults();
         return (float) ($results['took'] ?? 0);
+    }
+    
+    /**
+     * Get current user ID for personalized search
+     *
+     * @return string
+     */
+    private function getUserId()
+    {
+        $customerSession = $this->_objectManager->get(\Magento\Customer\Model\Session::class);
+        
+        if ($customerSession->isLoggedIn()) {
+            return 'customer_' . $customerSession->getCustomerId();
+        }
+        
+        $sessionManager = $this->_objectManager->get(\Magento\Framework\Session\SessionManagerInterface::class);
+        return 'guest_' . $sessionManager->getSessionId();
     }
 }

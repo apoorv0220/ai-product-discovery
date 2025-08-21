@@ -1,0 +1,135 @@
+<?php
+/**
+ * AI Product Discovery Suite - Cart View Tracking
+ *
+ * @var \Magento\Framework\View\Element\Template $block
+ */
+
+$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+$discoveryHelper = $objectManager->get('\Vendor\DiscoverySuite\Helper\Data');
+$customerSession = $objectManager->get('\Magento\Customer\Model\Session');
+$checkoutSession = $objectManager->get('\Magento\Checkout\Model\Session');
+
+if (!$discoveryHelper->isEnabled()) {
+    return;
+}
+
+$userId = $customerSession->isLoggedIn() ? 
+    'customer_' . $customerSession->getCustomerId() : 
+    'guest_' . session_id();
+
+$quote = $checkoutSession->getQuote();
+$cartItems = [];
+$cartTotal = 0;
+
+if ($quote && $quote->getItemsCount()) {
+    foreach ($quote->getAllVisibleItems() as $item) {
+        $cartItems[] = [
+            'product_id' => $item->getProductId(),
+            'sku' => $item->getSku(),
+            'name' => $item->getName(),
+            'qty' => $item->getQty(),
+            'price' => $item->getPrice()
+        ];
+    }
+    $cartTotal = $quote->getGrandTotal();
+}
+?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    <?php if (!empty($cartItems)): ?>
+    // Track cart view
+    const cartData = {
+        user_id: '<?= $block->escapeJs($userId) ?>',
+        event_type: 'cart_view',
+        context: 'shopping_cart',
+        timestamp: new Date().toISOString(),
+        cart_data: {
+            items: <?= json_encode($cartItems) ?>,
+            total: <?= $cartTotal ?>,
+            item_count: <?= count($cartItems) ?>
+        }
+    };
+    
+    // Send cart tracking data
+    fetch('<?= $block->escapeJs($block->getUrl('discovery/analytics/track')) ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify(cartData)
+    }).catch(function(error) {
+        console.log('Cart view tracking error:', error);
+    });
+    
+    // Track individual cart item views
+    <?php foreach ($cartItems as $item): ?>
+    fetch('<?= $block->escapeJs($block->getUrl('discovery/recommendations/track')) ?>', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+            user_id: '<?= $block->escapeJs($userId) ?>',
+            product_id: '<?= $block->escapeJs($item['product_id']) ?>',
+            interaction_type: 'impression',
+            event_type: 'impression',
+            context: 'cart_item',
+            cart_position: <?= array_search($item, $cartItems) + 1 ?>
+        })
+    }).catch(function(error) {
+        console.log('Cart item tracking error:', error);
+    });
+    <?php endforeach; ?>
+    
+    // Track cart abandonment (if user leaves without checkout)
+    let cartAbandoned = false;
+    
+    function trackCartAbandonment() {
+        if (cartAbandoned) return;
+        cartAbandoned = true;
+        
+        fetch('<?= $block->escapeJs($block->getUrl('discovery/analytics/track')) ?>', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                user_id: '<?= $block->escapeJs($userId) ?>',
+                event_type: 'cart_abandonment',
+                event_data: {
+                    cart_total: <?= $cartTotal ?>,
+                    item_count: <?= count($cartItems) ?>,
+                    time_in_cart: Math.round((Date.now() - performance.timing.navigationStart) / 1000)
+                }
+            })
+        }).catch(function(error) {
+            console.log('Cart abandonment tracking error:', error);
+        });
+    }
+    
+    // Track abandonment on page leave (but not if going to checkout)
+    window.addEventListener('beforeunload', function(e) {
+        // Check if user is going to checkout
+        if (!window.location.href.includes('checkout')) {
+            trackCartAbandonment();
+        }
+    });
+    
+    // Track abandonment after 10 minutes of inactivity
+    let inactivityTimer = setTimeout(trackCartAbandonment, 600000);
+    
+    // Reset timer on user activity
+    ['click', 'scroll', 'mousemove', 'keypress'].forEach(function(event) {
+        document.addEventListener(event, function() {
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(trackCartAbandonment, 600000);
+        });
+    });
+    <?php endif; ?>
+});
+</script>

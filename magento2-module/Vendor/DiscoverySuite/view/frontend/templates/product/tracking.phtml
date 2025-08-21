@@ -1,0 +1,26 @@
+<?php
+/**
+ * Product Tracking Template for Personalized Search
+ *
+ * @var \Vendor\DiscoverySuite\Block\Product\Tracking $block
+ */
+?>
+<?php if ($block->isTrackingEnabled()): ?>
+<script type="text/x-magento-init">
+{
+    "*": {
+        "Vendor_DiscoverySuite/js/discovery-product-tracking": {
+            "api_endpoint": "<?= $block->escapeUrl($block->getTrackingEndpoint()) ?>",
+            "search_endpoint": "<?= $block->escapeUrl($block->getSearchEndpoint()) ?>",
+            "user_id": "<?= $block->escapeHtml($block->getUserId()) ?>",
+            "session_id": "<?= $block->escapeHtml($block->getSessionId()) ?>"
+        }
+    }
+}
+</script>
+
+<script type="text/javascript">
+// Initialize product tracking with current product data
+window.productData = <?= json_encode($block->getCurrentProductData()) ?>;
+</script>
+<?php endif; ?>

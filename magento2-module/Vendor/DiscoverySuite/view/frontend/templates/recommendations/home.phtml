@@ -1,0 +1,369 @@
+<?php
+/**
+ * AI Product Discovery Suite - Home Recommendations Template
+ *
+ * @var \Vendor\DiscoverySuite\Block\Recommendations\Home $block
+ */
+
+if (!$block->isEnabled()) {
+    return;
+}
+
+$recommendations = $block->getRecommendations();
+if (empty($recommendations)) {
+    return;
+}
+
+$blockId = $block->getBlockId();
+?>
+
+<div class="discovery-home-recommendations" id="<?= $block->escapeHtml($blockId) ?>">
+    <div class="discovery-section-header">
+        <h2 class="discovery-title">
+            <span class="discovery-ai-badge">🤖 AI</span>
+            Recommended for You
+        </h2>
+        <p class="discovery-subtitle">Personalized picks based on your preferences</p>
+    </div>
+    
+    <div class="discovery-products-grid">
+        <?php foreach ($recommendations as $index => $recommendation): ?>
+            <?php 
+            $product = $recommendation['product'];
+            $reason = $recommendation['reason'];
+            $score = $recommendation['score'];
+            $algorithm = $recommendation['algorithm'];
+            ?>
+            <div class="discovery-product-card" 
+                 data-product-id="<?= $block->escapeHtml($product->getId()) ?>"
+                 data-recommendation-score="<?= $block->escapeHtml($score) ?>"
+                 data-algorithm="<?= $block->escapeHtml($algorithm) ?>">
+                
+                <div class="discovery-product-image">
+                    <a href="<?= $block->escapeUrl($product->getProductUrl()) ?>" 
+                       class="discovery-product-link"
+                       data-action="click"
+                       data-context="home_recommendations">
+                        <img src="<?= $block->escapeUrl($block->getProductImageUrl($product, 'product_page_image_small')) ?>" 
+                             alt="<?= $block->escapeHtml($product->getName()) ?>"
+                             class="discovery-product-img" />
+                    </a>
+                    
+                    <div class="discovery-ai-score" title="AI Confidence: <?= $block->escapeHtml(round($score * 100)) ?>%">
+                        <span class="discovery-score-bar">
+                            <span class="discovery-score-fill" style="width: <?= $block->escapeHtml(round($score * 100)) ?>%"></span>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="discovery-product-info">
+                    <h3 class="discovery-product-name">
+                        <a href="<?= $block->escapeUrl($product->getProductUrl()) ?>" 
+                           class="discovery-product-link"
+                           data-action="click"
+                           data-context="home_recommendations">
+                            <?= $block->escapeHtml($product->getName()) ?>
+                        </a>
+                    </h3>
+                    
+                    <div class="discovery-product-price">
+                        <?= /* @noEscape */ $block->getProductPrice($product) ?>
+                    </div>
+                    
+                    <div class="discovery-recommendation-reason">
+                        <span class="discovery-reason-icon">💡</span>
+                        <?= $block->escapeHtml($reason) ?>
+                    </div>
+                    
+                    <div class="discovery-product-actions">
+                        <?php if ($product->isSaleable()): ?>
+                            <button type="button" 
+                                    class="discovery-add-to-cart btn-primary"
+                                    data-product-id="<?= $block->escapeHtml($product->getId()) ?>"
+                                    data-action="add_to_cart"
+                                    data-context="home_recommendations">
+                                <span class="discovery-cart-icon">🛒</span>
+                                Add to Cart
+                            </button>
+                        <?php endif; ?>
+                        
+                        <button type="button" 
+                                class="discovery-wishlist btn-secondary"
+                                data-product-id="<?= $block->escapeHtml($product->getId()) ?>"
+                                data-action="wishlist_add"
+                                data-context="home_recommendations">
+                            <span class="discovery-heart-icon">♥</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    </div>
+    
+    <div class="discovery-powered-by">
+        <span class="discovery-ai-badge">🧠 AI-Powered</span>
+        Intelligent recommendations by Discovery Suite
+    </div>
+</div>
+
+<style>
+.discovery-home-recommendations {
+    margin: 40px 0;
+    padding: 30px 20px;
+    background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.discovery-section-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.discovery-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 0 0 8px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.discovery-ai-badge {
+    background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.discovery-subtitle {
+    color: #7f8c8d;
+    font-size: 16px;
+    margin: 0;
+}
+
+.discovery-products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-bottom: 20px;
+}
+
+.discovery-product-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    position: relative;
+}
+
+.discovery-product-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.discovery-product-image {
+    position: relative;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.discovery-product-img {
+    max-width: 100%;
+    height: 200px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.discovery-ai-score {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 6px;
+    background: #ecf0f1;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.discovery-score-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #e74c3c 0%, #f39c12 50%, #27ae60 100%);
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.discovery-product-name {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+    line-height: 1.3;
+}
+
+.discovery-product-name a {
+    color: #2c3e50;
+    text-decoration: none;
+}
+
+.discovery-product-name a:hover {
+    color: #3498db;
+}
+
+.discovery-product-price {
+    font-size: 20px;
+    font-weight: 700;
+    color: #e74c3c;
+    margin-bottom: 12px;
+}
+
+.discovery-recommendation-reason {
+    background: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #6c757d;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.discovery-product-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.discovery-add-to-cart {
+    flex: 1;
+    background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+}
+
+.discovery-add-to-cart:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.discovery-wishlist {
+    background: #fff;
+    border: 2px solid #e9ecef;
+    color: #6c757d;
+    padding: 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.discovery-wishlist:hover {
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
+.discovery-powered-by {
+    text-align: center;
+    font-size: 12px;
+    color: #95a5a6;
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+@media (max-width: 768px) {
+    .discovery-products-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 16px;
+    }
+    
+    .discovery-title {
+        font-size: 24px;
+    }
+    
+    .discovery-product-actions {
+        flex-direction: column;
+    }
+    
+    .discovery-add-to-cart {
+        width: 100%;
+    }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const blockId = '<?= $block->escapeJs($blockId) ?>';
+    const trackingUrl = '<?= $block->escapeJs($block->getTrackingUrl()) ?>';
+    
+    // Track recommendation impressions
+    const cards = document.querySelectorAll('#' + blockId + ' .discovery-product-card');
+    cards.forEach(function(card, index) {
+        const productId = card.dataset.productId;
+        
+        // Track impression
+        fetch(trackingUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                user_id: 'guest_<?= $block->escapeJs(session_id()) ?>',
+                product_id: productId,
+                interaction_type: 'impression',
+                event_type: 'impression',
+                context: 'home_recommendations',
+                position: index + 1
+            })
+        }).catch(function(error) {
+            console.log('Tracking error:', error);
+        });
+    });
+    
+    // Track clicks and interactions
+    document.getElementById(blockId).addEventListener('click', function(e) {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        
+        const action = target.dataset.action;
+        const productId = target.dataset.productId || target.closest('[data-product-id]').dataset.productId;
+        const context = target.dataset.context;
+        
+        // Track the interaction
+        fetch(trackingUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                user_id: 'guest_<?= $block->escapeJs(session_id()) ?>',
+                product_id: productId,
+                interaction_type: action,
+                event_type: action === 'click' ? 'click' : action,
+                context: context
+            })
+        }).catch(function(error) {
+            console.log('Tracking error:', error);
+        });
+    });
+});
+</script>

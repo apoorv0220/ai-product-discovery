@@ -57,6 +57,7 @@ class Data extends AbstractHelper
     private $servicePorts = [
         'search' => 7001,
         'recommendation' => 7002,
+        'recommendations' => 7002,
         'listing_optimizer' => 7003,
         'analytics' => 7003,
         'shopping_assistant' => 7004,
@@ -278,6 +279,20 @@ class Data extends AbstractHelper
             ScopeInterface::SCOPE_STORE,
             $storeId
         );
+    }
+    
+    /**
+     * Get current store ID
+     *
+     * @return int
+     */
+    public function getStoreId()
+    {
+        try {
+            return $this->storeManager->getStore()->getId();
+        } catch (\Exception $e) {
+            return 1; // Default store ID
+        }
     }
 
     // ========================================

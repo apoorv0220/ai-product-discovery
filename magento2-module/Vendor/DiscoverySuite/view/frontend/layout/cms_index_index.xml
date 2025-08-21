@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * AI Product Discovery Suite - Homepage Layout
+ *
+ * @category    Vendor
+ * @package     Vendor_DiscoverySuite
+ * @author      AI Product Discovery Team
+ * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
+ * @license     https://opensource.org/licenses/MIT MIT License
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <css src="Vendor_DiscoverySuite::css/recommendations.css"/>
+    </head>
+    <body>
+        <referenceContainer name="content">
+            <!-- Add home recommendations after main content -->
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Home" 
+                   name="discovery.home.recommendations" 
+                   template="Vendor_DiscoverySuite::recommendations/home.phtml"
+                   after="-">
+                <arguments>
+                    <argument name="cache_lifetime" xsi:type="number">3600</argument>
+                    <argument name="cache_tags" xsi:type="array">
+                        <item name="discovery_recommendations" xsi:type="string">discovery_recommendations</item>
+                    </argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

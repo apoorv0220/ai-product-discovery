@@ -78,7 +78,18 @@ define([
 
             this.autocompleteContainer.on('click.discovery', '.product-link', function (e) {
                 var productId = $(this).closest('.product-item').data('product-id');
+                var productName = $(this).find('.product-name').text().trim();
+                var position = $(this).closest('.product-item').index();
+                
+                // Track search click for personalization
+                self._trackSearchClick(productId, productName, position);
+                
+                // Track general click
                 self._trackClick('product', productId);
+                
+                // Set flag that user is coming from search
+                sessionStorage.setItem('came_from_search', 'true');
+                sessionStorage.setItem('last_search_query', self.searchInput.val().trim());
             });
 
             this.autocompleteContainer.on('click.discovery', '.category-link', function (e) {
@@ -226,7 +237,9 @@ define([
                 dataType: 'json',
                 data: {
                     q: query,
-                    limit: this.options.maxResults
+                    limit: this.options.maxResults,
+                    user_id: this._getUserId(),
+                    session_id: this._getSessionId()
                 },
                 success: function (data) {
                     self.currentRequest = null;
@@ -302,6 +315,56 @@ define([
                     query: this.searchInput.val()
                 });
             }
+        },
+
+        _trackSearchClick: function (productId, productName, position) {
+            // Track search click for personalization
+            var trackingData = {
+                user_id: this._getUserId(),
+                session_id: this._getSessionId(),
+                search_query: this.searchInput.val().trim(),
+                clicked_product_id: productId.toString(),
+                clicked_product_name: productName,
+                position_in_results: position
+            };
+            
+            // Send to backend API
+            $.ajax({
+                url: 'http://localhost:7001/api/v1/tracking/search-click',
+                type: 'POST',
+                data: JSON.stringify(trackingData),
+                contentType: 'application/json',
+                success: function(response) {
+                    console.log('Search click tracked:', response);
+                },
+                error: function(xhr, status, error) {
+                    console.warn('Failed to track search click:', error);
+                }
+            });
+        },
+
+        _getUserId: function () {
+            // Try to get user ID from customer data or global variables
+            if (window.customerData && window.customerData.get && window.customerData.get('customer')) {
+                var customer = window.customerData.get('customer')();
+                return customer && customer.id ? customer.id.toString() : null;
+            }
+            
+            // Fallback to global variables
+            return window.userId || window.customerId || null;
+        },
+
+        _getSessionId: function () {
+            // Generate or get session ID from storage
+            var sessionId = sessionStorage.getItem('discovery_session_id');
+            
+            if (!sessionId) {
+                // Generate new session ID
+                sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                sessionStorage.setItem('discovery_session_id', sessionId);
+            }
+            
+            return sessionId;
         },
 
         _destroy: function () {
