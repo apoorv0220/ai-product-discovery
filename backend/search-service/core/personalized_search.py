@@ -221,8 +221,13 @@ class PersonalizedSearchEngine:
             # Get personalized weights
             weights = await self.get_personalized_search_weights(user_id, session_id, product_ids)
             
+            logger.info(f"🎯 Personalization Debug - Session: {session_id}, Weights found: {len(weights)}, Products: {product_ids[:3]}...")
+            if weights:
+                logger.info(f"📊 Weights: {weights}")
+            
             if not weights:
                 # No personalization data, return original results
+                logger.info(f"⚠️ No personalization weights found for session: {session_id}")
                 return search_results
             
             # Apply weights to results
@@ -245,6 +250,11 @@ class PersonalizedSearchEngine:
                 result_copy['personalization_weight'] = personalization_weight
                 result_copy['final_score'] = final_score
                 result_copy['personalized'] = personalization_weight > 1.0
+                
+                # Log personalized items
+                if personalization_weight > 1.0:
+                    product_name = result.get('suggestion', result.get('title', result.get('name', 'Unknown')))
+                    logger.info(f"🚀 Boosted: {product_name} (ID: {product_id}) - Weight: {personalization_weight:.1f}, Score: {base_score:.1f} → {final_score:.1f}")
                 
                 personalized_results.append(result_copy)
             

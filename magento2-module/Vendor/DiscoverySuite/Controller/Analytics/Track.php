@@ -16,13 +16,14 @@ namespace Vendor\DiscoverySuite\Controller\Analytics;
 use Vendor\DiscoverySuite\Api\AnalyticsInterface;
 use Vendor\DiscoverySuite\Helper\Data;
 use Magento\Framework\App\Action\HttpPostActionInterface;
-use Magento\Framework\App\RequestInterface;
+use Magento\Framework\App\Action\Action;
+use Magento\Framework\App\Action\Context;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Controller\ResultInterface;
 use Magento\Customer\Model\Session as CustomerSession;
 use Psr\Log\LoggerInterface;
 
-class Track implements HttpPostActionInterface
+class Track extends Action implements HttpPostActionInterface
 {
     /**
      * @var AnalyticsInterface
@@ -33,11 +34,6 @@ class Track implements HttpPostActionInterface
      * @var Data
      */
     private $helper;
-
-    /**
-     * @var RequestInterface
-     */
-    private $request;
 
     /**
      * @var JsonFactory
@@ -57,24 +53,24 @@ class Track implements HttpPostActionInterface
     /**
      * Constructor
      *
+     * @param Context $context
      * @param AnalyticsInterface $analyticsService
      * @param Data $helper
-     * @param RequestInterface $request
      * @param JsonFactory $resultJsonFactory
      * @param CustomerSession $customerSession
      * @param LoggerInterface $logger
      */
     public function __construct(
+        Context $context,
         AnalyticsInterface $analyticsService,
         Data $helper,
-        RequestInterface $request,
         JsonFactory $resultJsonFactory,
         CustomerSession $customerSession,
         LoggerInterface $logger
     ) {
+        parent::__construct($context);
         $this->analyticsService = $analyticsService;
         $this->helper = $helper;
-        $this->request = $request;
         $this->resultJsonFactory = $resultJsonFactory;
         $this->customerSession = $customerSession;
         $this->logger = $logger;
@@ -97,8 +93,9 @@ class Track implements HttpPostActionInterface
         }
 
         try {
-            $eventType = (string) $this->request->getParam('event_type');
-            $eventData = $this->request->getParam('event_data', []);
+            $request = $this->getRequest();
+            $eventType = (string) $request->getParam('event_type');
+            $eventData = $request->getParam('event_data', []);
 
             if (!$eventType) {
                 return $result->setData([
@@ -116,9 +113,9 @@ class Track implements HttpPostActionInterface
 
             // Add standard tracking data
             $eventData['timestamp'] = time();
-            $eventData['user_agent'] = $this->request->getServer('HTTP_USER_AGENT');
-            $eventData['ip_address'] = $this->request->getClientIp();
-            $eventData['referrer'] = $this->request->getServer('HTTP_REFERER');
+            $eventData['user_agent'] = $request->getServer('HTTP_USER_AGENT');
+            $eventData['ip_address'] = $request->getClientIp();
+            $eventData['referrer'] = $request->getServer('HTTP_REFERER');
 
             $tracked = $this->analyticsService->trackEvent(
                 $eventType,

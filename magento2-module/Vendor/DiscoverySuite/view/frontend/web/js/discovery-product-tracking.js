@@ -6,34 +6,55 @@
 define([
     'jquery',
     'mage/storage',
-    'Magento_Customer/js/customer-data'
-], function ($, storage, customerData) {
+    'Magento_Customer/js/customer-data',
+    'Vendor_DiscoverySuite/js/utils/session'
+], function ($, storage, customerData, sessionUtils) {
     'use strict';
 
-    return function (config) {
-        var self = this;
-        
-        // Configuration
-        self.apiEndpoint = config.api_endpoint || '/discovery/interactions/track';
-        self.searchEndpoint = config.search_endpoint || '/discovery/search/track';
-        self.userId = config.user_id || 'anonymous';
-        self.sessionId = config.session_id || '';
+    $.widget('discovery.productTracking', {
+        options: {
+            apiEndpoint: '/discovery/interactions/track',
+            searchEndpoint: '/discovery/search/track',
+            userId: 'anonymous',
+            sessionId: ''
+        },
+
+        _create: function () {
+            this._initTracking();
+        },
+
+        _initTracking: function () {
+            var self = this;
+            
+            // Initialize tracking based on page type
+            if (window.location.pathname.includes('/product/') || 
+                window.location.pathname.match(/\.html$/)) {
+                this._initProductPageTracking();
+            } else if (window.location.pathname.includes('/catalogsearch/result/')) {
+                this._initSearchTracking();
+            } else if (window.location.pathname.includes('/catalog/category/')) {
+                this._initCategoryTracking();
+            }
+            
+            // Track page views for all pages
+            this._trackPageView();
+        },
         
         // Track product view
-        self.trackProductView = function(productData) {
+        _trackProductView: function(productData) {
             if (!productData || !productData.id) {
                 return;
             }
             
             var trackingData = {
-                user_id: self.getUserId(),
-                session_id: self.getSessionId(),
+                user_id: sessionUtils.getUserId(),
+                session_id: sessionUtils.getSessionId(),
                 product_id: productData.id.toString(),
                 product_name: productData.name || '',
                 product_sku: productData.sku || '',
                 categories: productData.categories || [],
-                came_from_search: self.isFromSearch(),
-                search_query: self.getSearchQuery()
+                came_from_search: this._isFromSearch(),
+                search_query: this._getSearchQuery()
             };
             
             // Send to backend API
@@ -43,51 +64,25 @@ define([
                 data: JSON.stringify(trackingData),
                 contentType: 'application/json',
                 success: function(response) {
-                    console.log('Product view tracked:', response);
+                    console.log('✅ Product view tracked:', response);
                 },
                 error: function(xhr, status, error) {
-                    console.warn('Failed to track product view:', error);
+                    console.warn('❌ Failed to track product view:', error);
                 }
             });
-        };
-        
-        // Get user ID
-        self.getUserId = function() {
-            // Try to get user ID from customer data or global variables
-            if (window.customerData && window.customerData.get && window.customerData.get('customer')) {
-                var customer = window.customerData.get('customer')();
-                return customer && customer.id ? customer.id.toString() : null;
-            }
-            
-            // Fallback to global variables
-            return window.userId || window.customerId || self.userId || null;
-        };
-        
-        // Get session ID
-        self.getSessionId = function() {
-            // Generate or get session ID from storage
-            var sessionId = sessionStorage.getItem('discovery_session_id');
-            
-            if (!sessionId) {
-                // Generate new session ID
-                sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                sessionStorage.setItem('discovery_session_id', sessionId);
-            }
-            
-            return sessionId;
-        };
+        },
         
         // Check if user came from search
-        self.isFromSearch = function() {
+        _isFromSearch: function() {
             var referrer = document.referrer || '';
             var searchParams = new URLSearchParams(window.location.search);
             return referrer.includes('/catalogsearch/result/') || 
                    searchParams.has('q') || 
                    sessionStorage.getItem('came_from_search') === 'true';
-        };
+        },
         
         // Get search query if came from search
-        self.getSearchQuery = function() {
+        _getSearchQuery: function() {
             var searchParams = new URLSearchParams(window.location.search);
             var query = searchParams.get('q') || sessionStorage.getItem('last_search_query');
             
@@ -95,7 +90,7 @@ define([
             sessionStorage.removeItem('came_from_search');
             
             return query;
-        };
+        },
         
         // Track search query
         self.trackSearchQuery = function(query, results) {
@@ -128,20 +123,21 @@ define([
         };
         
         // Initialize tracking on product page
-        self.initProductPageTracking = function() {
+        _initProductPageTracking: function() {
+            var self = this;
             // Get product data from page or extract from DOM
-            var productData = self.extractProductData();
+            var productData = this._extractProductData();
             
             if (productData.id) {
                 // Track initial page load
-                self.trackProductView(productData);
+                this._trackProductView(productData);
                 
                 // Track if user stays on page for more than 10 seconds
                 setTimeout(function() {
-                    self.trackProductView(productData);
+                    self._trackProductView(productData);
                 }, 10000);
             }
-        };
+        },
         
         // Extract product data from page
         self.extractProductData = function() {

@@ -161,9 +161,11 @@ class SearchService implements SearchInterface
      *
      * @param string $query
      * @param int $limit
+     * @param string|null $userId
+     * @param string|null $sessionId
      * @return array
      */
-    public function autocomplete(string $query, int $limit = 10): array
+    public function autocomplete(string $query, int $limit = 10, ?string $userId = null, ?string $sessionId = null): array
     {
         if (!$this->helper->isAutocompleteEnabled()) {
             return [];
@@ -172,11 +174,22 @@ class SearchService implements SearchInterface
         try {
             $endpoint = $this->helper->getServiceUrl('search', '/api/v1/autocomplete/');
             
-            // Use GET request with query parameters (as per your API)
-            $response = $this->httpClient->get($endpoint, [
+            // Build parameters for personalized search
+            $params = [
                 'q' => $query,
                 'limit' => $limit
-            ]);
+            ];
+            
+            // Add personalization parameters if available
+            if ($userId) {
+                $params['user_id'] = $userId;
+            }
+            if ($sessionId) {
+                $params['session_id'] = $sessionId;
+            }
+            
+            // Use GET request with query parameters (as per your API)
+            $response = $this->httpClient->get($endpoint, $params);
             
             // Process NLP-enhanced autocomplete response
             if ($response && isset($response['suggestions'])) {

@@ -4,8 +4,8 @@
 define([
     'jquery',
     'mage/url',
-    'mage/cookies'
-], function ($, url, cookies) {
+    'Vendor_DiscoverySuite/js/utils/session'
+], function ($, url, sessionUtils) {
     'use strict';
 
     $.widget('discovery.discoveryAssistant', {
@@ -231,9 +231,7 @@ define([
         },
 
         _getViewedProducts: function () {
-            // Get recently viewed products from cookies or local storage
-            var viewed = cookies.get('recently_viewed_products');
-            return viewed ? JSON.parse(viewed) : [];
+            return sessionUtils.getViewedProducts();
         },
 
         _showTyping: function () {

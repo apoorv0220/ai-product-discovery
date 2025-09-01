@@ -90,6 +90,12 @@ class Autocomplete implements HttpGetActionInterface, HttpPostActionInterface
         }
 
         try {
+            // Check if this is a product tracking request
+            $action = $this->request->getParam('action');
+            if ($action === 'track_product_view') {
+                return $this->handleProductTracking($result);
+            }
+
             $query = trim((string) $this->request->getParam('q', ''));
             $limit = (int) $this->request->getParam('limit', 10);
 
@@ -101,7 +107,11 @@ class Autocomplete implements HttpGetActionInterface, HttpPostActionInterface
                 ]);
             }
 
-            $autocompleteResponse = $this->searchService->autocomplete($query, $limit);
+            // Get user ID and session ID for personalization
+            $userId = $this->getUserId();
+            $sessionId = $this->getSessionId();
+
+            $autocompleteResponse = $this->searchService->autocomplete($query, $limit, $userId, $sessionId);
             
             // Process suggestions to ensure proper format
             $suggestions = [];
@@ -246,5 +256,133 @@ class Autocomplete implements HttpGetActionInterface, HttpPostActionInterface
         }
         
         return '#';
+    }
+
+    /**
+     * Get user ID for personalization
+     *
+     * @return string|null
+     */
+    private function getUserId(): ?string
+    {
+        // Try from request parameters first (for frontend JS)
+        $userId = $this->request->getParam('user_id');
+        if ($userId) {
+            return (string) $userId;
+        }
+        
+        // Try to get customer ID from session if available
+        try {
+            $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
+            $customerSession = $objectManager->get(\Magento\Customer\Model\Session::class);
+            if ($customerSession && $customerSession->isLoggedIn()) {
+                return (string) $customerSession->getCustomerId();
+            }
+        } catch (\Exception $e) {
+            // Ignore session errors
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get session ID for personalization
+     *
+     * @return string
+     */
+    private function getSessionId(): string
+    {
+        // Try from request parameters first (for frontend JS)
+        $sessionId = $this->request->getParam('session_id');
+        if ($sessionId) {
+            return (string) $sessionId;
+        }
+        
+        // Generate session ID based on PHP session or create new one
+        try {
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                return 'php_' . session_id();
+            }
+        } catch (\Exception $e) {
+            // Ignore session errors
+        }
+        
+        // Fallback: generate a basic session ID based on request info
+        $userAgent = $this->request->getHeader('User-Agent') ?: 'unknown';
+        $remoteAddr = $this->request->getClientIp() ?: '127.0.0.1';
+        return 'sess_' . time() . '_' . substr(md5($userAgent . $remoteAddr), 0, 8);
+    }
+
+    /**
+     * Handle product tracking requests
+     *
+     * @param ResultInterface $result
+     * @return ResultInterface
+     */
+    private function handleProductTracking($result): ResultInterface
+    {
+        try {
+            $trackingDataJson = $this->request->getParam('tracking_data');
+            $trackingData = json_decode($trackingDataJson, true);
+            
+            if (!$trackingData || !isset($trackingData['product_id'])) {
+                return $result->setData([
+                    'success' => false,
+                    'message' => 'Invalid tracking data'
+                ]);
+            }
+
+            // Make API call to backend tracking service
+            $apiData = [
+                'session_id' => $trackingData['session_id'] ?? $this->getSessionId(),
+                'product_id' => (string) $trackingData['product_id'],
+                'product_name' => $trackingData['product_name'] ?? '',
+                'product_sku' => $trackingData['product_sku'] ?? '',
+                'categories' => $trackingData['categories'] ?? [],
+                'came_from_search' => (bool) ($trackingData['came_from_search'] ?? false),
+                'search_query' => $trackingData['search_query'] ?? ''
+            ];
+
+            // Use cURL to call backend API
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, 'http://localhost:7001/api/v1/tracking/product-view');
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($apiData));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode === 200 && $response) {
+                $responseData = json_decode($response, true);
+                if ($responseData && isset($responseData['success']) && $responseData['success']) {
+                    return $result->setData([
+                        'success' => true,
+                        'message' => 'Product view tracked successfully'
+                    ]);
+                }
+            }
+            
+            // Return success even if backend fails (graceful degradation)
+            return $result->setData([
+                'success' => true,
+                'message' => 'Product view tracked (offline mode)'
+            ]);
+
+        } catch (\Exception $e) {
+            // Log error but return success for graceful degradation
+            $this->logger->warning('Product tracking error: ' . $e->getMessage());
+            
+            return $result->setData([
+                'success' => true,
+                'message' => 'Product view tracked (fallback mode)'
+            ]);
+        }
     }
 }

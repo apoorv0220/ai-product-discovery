@@ -4,8 +4,8 @@
 define([
     'jquery',
     'mage/url',
-    'mage/cookies'
-], function ($, url, cookies) {
+    'Vendor_DiscoverySuite/js/utils/session'
+], function ($, url, sessionUtils) {
     'use strict';
 
     $.widget('discovery.discoveryAnalytics', {
@@ -246,12 +246,7 @@ define([
         },
 
         _getOrCreateSessionId: function () {
-            var sessionId = cookies.get('discovery_analytics_session');
-            if (!sessionId) {
-                sessionId = 'analytics_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                cookies.set('discovery_analytics_session', sessionId, { expires: 1 });
-            }
-            return sessionId;
+            return sessionUtils.getAnalyticsSessionId();
         },
 
         _extractProductId: function (element) {

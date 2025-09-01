@@ -12,8 +12,9 @@ define([
     'jquery',
     'underscore',
     'mage/template',
-    'jquery/ui'
-], function ($, _, mageTemplate) {
+    'jquery/ui',
+    'Vendor_DiscoverySuite/js/utils/session'
+], function ($, _, mageTemplate, ui, sessionUtils) {
     'use strict';
 
     $.widget('discovery.discoveryAutocomplete', {
@@ -344,27 +345,11 @@ define([
         },
 
         _getUserId: function () {
-            // Try to get user ID from customer data or global variables
-            if (window.customerData && window.customerData.get && window.customerData.get('customer')) {
-                var customer = window.customerData.get('customer')();
-                return customer && customer.id ? customer.id.toString() : null;
-            }
-            
-            // Fallback to global variables
-            return window.userId || window.customerId || null;
+            return sessionUtils.getUserId();
         },
 
         _getSessionId: function () {
-            // Generate or get session ID from storage
-            var sessionId = sessionStorage.getItem('discovery_session_id');
-            
-            if (!sessionId) {
-                // Generate new session ID
-                sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                sessionStorage.setItem('discovery_session_id', sessionId);
-            }
-            
-            return sessionId;
+            return sessionUtils.getSessionId();
         },
 
         _destroy: function () {

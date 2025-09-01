@@ -1,38 +1,28 @@
 <?xml version="1.0"?>
 <!--
 /**
- * AI Product Discovery Suite - Product Page Layout
- *
- * @category    Vendor
- * @package     Vendor_DiscoverySuite
- * @author      AI Product Discovery Team
- * @copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
- * @license     https://opensource.org/licenses/MIT MIT License
+ * Product View Layout - Add Personalized Search Tracking
  */
 -->
-<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <head>
+        <!-- Product tracking handled by template -->
+    </head>
     <body>
         <referenceContainer name="content">
-            <!-- Add product recommendations after product details -->
-            <block class="Vendor\DiscoverySuite\Block\Recommendations\Product" 
-                   name="discovery.product.recommendations" 
-                   template="Vendor_DiscoverySuite::recommendations/product.phtml"
-                   after="product.info.details">
-                <arguments>
-                    <argument name="cache_lifetime" xsi:type="number">1800</argument>
-                    <argument name="cache_tags" xsi:type="array">
-                        <item name="discovery_recommendations" xsi:type="string">discovery_recommendations</item>
-                        <item name="catalog_product" xsi:type="string">catalog_product</item>
-                    </argument>
-                </arguments>
-            </block>
+            <block class="Vendor\DiscoverySuite\Block\Tracking\ProductView" 
+                   name="discovery.product.tracking" 
+                   template="Vendor_DiscoverySuite::tracking/product_view.phtml"
+                   after="-"/>
         </referenceContainer>
         
-        <!-- Add tracking script for product view -->
-        <referenceContainer name="before.body.end">
-            <block class="Magento\Framework\View\Element\Template" 
-                   name="discovery.product.tracking" 
-                   template="Vendor_DiscoverySuite::tracking/product_view.phtml"/>
+        <!-- Add tracking to product recommendations section -->
+        <referenceContainer name="content.aside">
+            <block class="Vendor\DiscoverySuite\Block\Recommendations\Product" 
+                   name="discovery.recommendations.product" 
+                   template="Vendor_DiscoverySuite::recommendations/product.phtml"
+                   after="-"/>
         </referenceContainer>
     </body>
 </page>

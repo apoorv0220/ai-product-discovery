@@ -8,13 +8,13 @@
             'jquery',
             'mage/url',
             'mage/storage',
-            'mage/cookies'
+            'Vendor_DiscoverySuite/js/utils/session'
         ], factory);
     } else {
         // Browser globals
-        window.DiscoveryMain = factory(jQuery, mage.url, mage.storage, mage.cookies);
+        window.DiscoveryMain = factory(jQuery, mage.url, mage.storage, sessionUtils);
     }
-}(function ($, url, storage, cookies) {
+}(function ($, url, storage, sessionUtils) {
     'use strict';
 
     var DiscoveryMain = {
@@ -369,12 +369,7 @@
          * Get or create session ID
          */
         getSessionId: function () {
-            var sessionId = cookies.get('discovery_session_id');
-            if (!sessionId) {
-                sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                cookies.set('discovery_session_id', sessionId, { expires: 1 }); // 1 day
-            }
-            return sessionId;
+            return sessionUtils.getSessionId();
         }
     };
 

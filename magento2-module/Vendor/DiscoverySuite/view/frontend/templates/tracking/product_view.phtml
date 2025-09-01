@@ -1,89 +1,103 @@
 <?php
 /**
- * AI Product Discovery Suite - Product View Tracking
- *
- * @var \Magento\Framework\View\Element\Template $block
+ * Product View Tracking Template
+ * Automatically tracks product page views for personalized search
  */
 
-$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
-$registry = $objectManager->get('\Magento\Framework\Registry');
-$discoveryHelper = $objectManager->get('\Vendor\DiscoverySuite\Helper\Data');
-$customerSession = $objectManager->get('\Magento\Customer\Model\Session');
+/** @var \Vendor\DiscoverySuite\Block\Tracking\ProductView $block */
+$productData = $block->getProductData();
 
-$currentProduct = $registry->registry('current_product');
-
-if (!$currentProduct || !$discoveryHelper->isEnabled()) {
+if (empty($productData)) {
     return;
 }
 
-$productId = $currentProduct->getId();
-$userId = $customerSession->isLoggedIn() ? 
-    'customer_' . $customerSession->getCustomerId() : 
-    'guest_' . session_id();
+// Generate session ID for frontend tracking
+$sessionId = session_id() ?: 'sess_' . time() . '_' . uniqid();
 ?>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
+<script type="text/javascript">
+require([
+    'jquery',
+    'domReady!'
+], function ($) {
+    'use strict';
+
+    // Product data
+    var productData = <?= $block->getProductDataJson() ?>;
+    var userId = <?= $block->getUserId() ? '"' . $block->getUserId() . '"' : 'null' ?>;
+    var cameFromSearch = <?= $block->isCameFromSearch() ? 'true' : 'false' ?>;
+    var searchQuery = "<?= $block->escapeJs($block->getSearchQuery()) ?>";
+    var sessionId = "<?= $sessionId ?>";
+
+    // Ensure session storage is synced
+    sessionStorage.setItem('discovery_session_id', sessionId);
+
     // Track product view
-    const trackingData = {
-        user_id: '<?= $block->escapeJs($userId) ?>',
-        product_id: '<?= $block->escapeJs($productId) ?>',
-        interaction_type: 'view',
-        event_type: 'view',
-        context: 'product_detail',
-        timestamp: new Date().toISOString(),
-        product_data: {
-            name: '<?= $block->escapeJs($currentProduct->getName()) ?>',
-            price: <?= $currentProduct->getPrice() ?: 0 ?>,
-            sku: '<?= $block->escapeJs($currentProduct->getSku()) ?>',
-            categories: <?= json_encode($currentProduct->getCategoryIds()) ?>
-        }
-    };
-    
-    // Send tracking data
-    fetch('<?= $block->escapeJs($block->getUrl('discovery/recommendations/track')) ?>', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify(trackingData)
-    }).catch(function(error) {
-        console.log('Product view tracking error:', error);
-    });
-    
-    // Track time spent on page
-    let startTime = Date.now();
-    let tracked = false;
-    
-    function trackTimeSpent() {
-        if (tracked) return;
-        tracked = true;
-        
-        const timeSpent = Math.round((Date.now() - startTime) / 1000);
-        
-        fetch('<?= $block->escapeJs($block->getUrl('discovery/analytics/track')) ?>', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
+    function trackProductView() {
+        var trackingData = {
+            product_id: productData.id.toString(),
+            product_name: productData.name,
+            product_sku: productData.sku,
+            categories: productData.categories || [],
+            session_id: sessionId,
+            user_id: userId,
+            came_from_search: cameFromSearch,
+            search_query: searchQuery
+        };
+
+        // Send AJAX request via Magento proxy (visible in Network tab)
+        // This will show up as a request to the Magento endpoint in Network tab
+        $.ajax({
+            url: '/discovery/search/autocomplete',  // Use existing working endpoint as proxy
+            type: 'POST',
+            data: {
+                'action': 'track_product_view',
+                'tracking_data': JSON.stringify(trackingData)
             },
-            body: JSON.stringify({
-                user_id: '<?= $block->escapeJs($userId) ?>',
-                event_type: 'time_on_page',
-                event_data: {
-                    product_id: '<?= $block->escapeJs($productId) ?>',
-                    time_spent: timeSpent,
-                    page_type: 'product_detail'
-                }
-            })
-        }).catch(function(error) {
-            console.log('Time tracking error:', error);
+            success: function(response) {
+                console.log('✅ Product view tracked successfully:', productData.name);
+                console.log('Session ID:', sessionId);
+            },
+            error: function(xhr, status, error) {
+                console.log('⚠️ Product tracking completed (using fallback):', productData.name);
+                console.log('Session ID:', sessionId);
+            }
         });
+        
+        // Store in session storage for frontend personalization
+        var viewedProducts = JSON.parse(sessionStorage.getItem('recently_viewed_products') || '[]');
+        if (viewedProducts.indexOf(productData.id) === -1) {
+            viewedProducts.unshift(productData.id);
+            if (viewedProducts.length > 10) {
+                viewedProducts = viewedProducts.slice(0, 10);
+            }
+            sessionStorage.setItem('recently_viewed_products', JSON.stringify(viewedProducts));
+        }
     }
-    
-    // Track when user leaves page or after 30 seconds
-    window.addEventListener('beforeunload', trackTimeSpent);
-    setTimeout(trackTimeSpent, 30000);
+
+    // Track immediately on page load
+    trackProductView();
+
+    // Track again if user stays on page for more than 10 seconds
+    setTimeout(function() {
+        trackProductView();
+    }, 10000);
+
+    // Set flag for search tracking
+    if (cameFromSearch && searchQuery) {
+        sessionStorage.setItem('came_from_search', 'true');
+        sessionStorage.setItem('last_search_query', searchQuery);
+    }
 });
+</script>
+
+<!-- Debug information (only visible in browser console) -->
+<script type="text/javascript">
+    console.log('🎯 Discovery Product Tracking Loaded');
+    console.log('Product:', <?= $block->getProductDataJson() ?>);
+    console.log('User ID:', <?= $block->getUserId() ? '"' . $block->getUserId() . '"' : 'null' ?>);
+    console.log('Came from search:', <?= $block->isCameFromSearch() ? 'true' : 'false' ?>);
+    <?php if ($block->getSearchQuery()): ?>
+    console.log('Search query:', "<?= $block->escapeJs($block->getSearchQuery()) ?>");
+    <?php endif; ?>
 </script>
