@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: ai_discovery_postgres
     environment:
-      POSTGRES_DB: ai_discovery
-      POSTGRES_USER: ai_user
-      POSTGRES_PASSWORD: ai_password_2024
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
       - "7010:5432"
@@ -29,9 +27,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ai_discovery_redis
-    command: redis-server --appendonly yes --requirepass redis_password_2024
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
-      - "7011:6379"
+      - "${REDIS_EXTERNAL_PORT:-7011}:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -53,18 +51,18 @@ services:
     ports:
       - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SEARCH_SERVICE_HOST=0.0.0.0
       - SEARCH_SERVICE_PORT=${SEARCH_SERVICE_PORT:-7099}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -89,18 +87,18 @@ services:
     ports:
       - "${RECOMMENDATION_SERVICE_EXTERNAL_PORT:-7002}:${RECOMMENDATION_SERVICE_PORT:-7099}"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - RECOMMENDATION_SERVICE_HOST=0.0.0.0
       - RECOMMENDATION_SERVICE_PORT=${RECOMMENDATION_SERVICE_PORT:-7099}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -125,18 +123,18 @@ services:
     ports:
       - "${ANALYTICS_SERVICE_EXTERNAL_PORT:-7004}:${ANALYTICS_SERVICE_PORT:-7099}"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - ANALYTICS_SERVICE_HOST=0.0.0.0
       - ANALYTICS_SERVICE_PORT=${ANALYTICS_SERVICE_PORT:-7099}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -161,17 +159,17 @@ services:
     ports:
       - "${SHOPPING_ASSISTANT_EXTERNAL_PORT:-7005}:${SHOPPING_ASSISTANT_PORT:-7099}"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - SHOPPING_ASSISTANT_HOST=0.0.0.0
       - SHOPPING_ASSISTANT_PORT=${SHOPPING_ASSISTANT_PORT:-7099}
       - SECRET_KEY=${SECRET_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -187,6 +185,26 @@ services:
       retries: 5
       start_period: 60s
 
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+    container_name: ai_discovery_celery_worker
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
+      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app worker --loglevel=info
 
 
   # Elasticsearch (for search indexing)
@@ -215,34 +233,35 @@ services:
       retries: 3
       start_period: 60s
 
-  # Weaviate (for vector search)
-  weaviate:
-    image: cr.weaviate.io/semitechnologies/weaviate:1.24.5
-    container_name: ai_discovery_weaviate
+  # Qdrant (for vector search)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai_discovery_qdrant
     ports:
-      - "${WEAVIATE_EXTERNAL_PORT:-8065}:8065"
-      - "50051:50051"
+      - "${QDRANT_EXTERNAL_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
     environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      ENABLE_MODULES: 'text2vec-openai,qna-openai'
-      CLUSTER_HOSTNAME: 'node1'
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
     restart: unless-stopped
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8065/v1/meta", "||", "exit", "1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  qdrant_data:
     driver: local
 
 networks:

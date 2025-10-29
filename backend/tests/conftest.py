@@ -1,360 +1,274 @@
 """
-DiscoverySuite Test Configuration
+Pytest Configuration and Shared Fixtures
 
-@category    Backend
-@package     Tests
-@author      AI Product Discovery Team
-@copyright   Copyright (c) 2024 DiscoverySuite (https://discoverysuite.ai)
-@license     https://opensource.org/licenses/MIT MIT License
+@category    Tests
+@package     Configuration
+@license     MIT License
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import os
-from unittest.mock import Mock, patch
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from backend.shared.database.base import Base, get_db
-from backend.shared.config.settings import get_settings
+import sys
+from typing import AsyncGenerator
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
+import redis.asyncio as redis_async
+from faker import Faker
+
+# Add backend to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from shared.config.settings import get_settings
+from shared.auth.api_key_manager import APIKeyManager
+
+settings = get_settings()
+fake = Faker()
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# ============================================================================
+# PYTEST CONFIGURATION
+# ============================================================================
+
+def pytest_configure(config):
+    """Configure pytest with custom markers"""
+    config.addinivalue_line("markers", "unit: Unit tests (fast, isolated)")
+    config.addinivalue_line("markers", "integration: Integration tests (require services)")
+    config.addinivalue_line("markers", "regression: Regression tests (prevent breaking changes)")
+    config.addinivalue_line("markers", "slow: Slow tests (skip in quick runs)")
+    config.addinivalue_line("markers", "requires_redis: Requires Redis connection")
+    config.addinivalue_line("markers", "requires_elasticsearch: Requires Elasticsearch")
+    config.addinivalue_line("markers", "requires_qdrant: Requires Qdrant")
 
 
-@pytest.fixture(scope="session")
-def test_settings():
-    """Test settings with test database configuration"""
-    settings = get_settings()
-    settings.DATABASE_URL = "sqlite:///./test.db"
-    settings.REDIS_URL = "redis://localhost:6379/1"  # Use different Redis DB for tests
-    settings.ELASTICSEARCH_HOST = "localhost"
-    settings.ELASTICSEARCH_PORT = 9200
-    return settings
+# ============================================================================
+# FUNCTION SCOPE FIXTURES (Setup for each test - database engine)
+# ============================================================================
 
-
-@pytest.fixture(scope="session")
-def test_engine(test_settings):
-    """Create test database engine"""
-    engine = create_engine(
-        test_settings.DATABASE_URL,
-        connect_args={"check_same_thread": False}  # SQLite specific
-    )
+@pytest_asyncio.fixture
+async def db_engine():
+    """Create database engine for testing
     
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
+    Note: Function-scoped to avoid pytest-asyncio fixture scope conflicts.
+    Database connections are pooled, so this is efficient.
+    """
+    # Use the main development database to avoid creating a separate test DB
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
     
     yield engine
     
-    # Clean up
-    Base.metadata.drop_all(bind=engine)
+    await engine.dispose()
+
+
+# ============================================================================
+# FUNCTION SCOPE FIXTURES (Setup for each test)
+# ============================================================================
+
+@pytest_asyncio.fixture
+async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Create a fresh database session for each test"""
+    session_factory = async_sessionmaker(
+        db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False
+    )
     
-    # Remove test database file
-    if os.path.exists("./test.db"):
-        os.remove("./test.db")
-
-
-@pytest.fixture
-def test_db_session(test_engine):
-    """Create test database session"""
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-    session = TestingSessionLocal()
-    
-    yield session
-    
-    session.rollback()
-    session.close()
-
-
-@pytest.fixture
-def override_get_db(test_db_session):
-    """Override get_db dependency for testing"""
-    def _override_get_db():
+    async with session_factory() as session:
         try:
-            yield test_db_session
+            yield session
+            # Commit at end if no errors
+            await session.commit()
+        except Exception:
+            # Rollback on error
+            await session.rollback()
+            raise
         finally:
-            test_db_session.close()
+            # Ensure cleanup
+            await session.close()
+
+
+@pytest_asyncio.fixture
+async def redis_client() -> AsyncGenerator[redis_async.Redis, None]:
+    """Create Redis client for testing"""
+    client = await redis_async.from_url(
+        settings.REDIS_URL,
+        encoding="utf-8",
+        decode_responses=True
+    )
     
-    return _override_get_db
+    # Use a test database number
+    await client.select(15)  # Use DB 15 for tests
+    
+    # Clear test keys before test
+    await client.flushdb()
+    
+    yield client
+    
+    # Clear test keys after test
+    await client.flushdb()
+    await client.close()
+
+
+@pytest_asyncio.fixture
+async def api_key_manager(db_session) -> APIKeyManager:
+    """Create API key manager instance"""
+    return APIKeyManager(db_session)
+
+
+# ============================================================================
+# TEST DATA FIXTURES
+# ============================================================================
+
+@pytest_asyncio.fixture
+async def test_merchant(db_session) -> dict:
+    """Create a test merchant"""
+    query = text("""
+        INSERT INTO merchants (name, email, company_name, tier, status)
+        VALUES (:name, :email, :company, :tier, 'active')
+        RETURNING id, name, email, tier, status
+    """)
+    
+    result = await db_session.execute(query, {
+        "name": fake.company(),
+        "email": fake.email(),
+        "company": fake.company(),
+        "tier": "pro"
+    })
+    
+    row = result.fetchone()
+    await db_session.flush()  # Flush to DB but don't commit yet
+    
+    return {
+        "id": row[0],
+        "name": row[1],
+        "email": row[2],
+        "tier": row[3],
+        "status": row[4]
+    }
+
+
+@pytest_asyncio.fixture
+async def test_api_key(db_session, test_merchant, api_key_manager) -> tuple[str, dict]:
+    """Create a test API key"""
+    api_key, key_record = await api_key_manager.create_api_key(
+        merchant_id=test_merchant["id"],
+        name="Test API Key",
+        description="Key for testing"
+    )
+    
+    return api_key, key_record
 
 
 @pytest.fixture
-def mock_elasticsearch():
+def test_product_data() -> dict:
+    """Generate test product data"""
+    return {
+        "sku": fake.uuid4(),
+        "name": fake.catch_phrase(),
+        "description": fake.text(max_nb_chars=200),
+        "category_name": fake.word().capitalize(),
+        "price": float(fake.random_int(min=10, max=1000)),
+        "is_in_stock": True
+    }
+
+
+# ============================================================================
+# MOCK FIXTURES
+# ============================================================================
+
+@pytest.fixture
+def mock_elasticsearch(mocker):
     """Mock Elasticsearch client"""
-    with patch('elasticsearch.Elasticsearch') as mock:
-        mock_instance = Mock()
-        mock_instance.search.return_value = {
-            "hits": {
-                "total": {"value": 0},
-                "hits": []
-            },
-            "took": 1
+    mock_es = mocker.Mock()
+    mock_es.search = mocker.AsyncMock(return_value={
+        "hits": {
+            "hits": [],
+            "total": {"value": 0}
         }
-        mock_instance.index.return_value = {"result": "created"}
-        mock_instance.delete.return_value = {"result": "deleted"}
-        mock.return_value = mock_instance
-        yield mock_instance
+    })
+    mock_es.index = mocker.AsyncMock(return_value={"result": "created"})
+    mock_es.delete = mocker.AsyncMock(return_value={"result": "deleted"})
+    return mock_es
 
 
 @pytest.fixture
-def mock_redis():
-    """Mock Redis client"""
-    with patch('redis.Redis') as mock:
-        mock_instance = Mock()
-        mock_instance.get.return_value = None
-        mock_instance.set.return_value = True
-        mock_instance.delete.return_value = 1
-        mock_instance.exists.return_value = False
-        mock.return_value = mock_instance
-        yield mock_instance
+def mock_qdrant(mocker):
+    """Mock Qdrant client"""
+    mock_qdrant = mocker.Mock()
+    mock_qdrant.search = mocker.AsyncMock(return_value=[])
+    mock_qdrant.upsert = mocker.AsyncMock(return_value=True)
+    mock_qdrant.delete = mocker.AsyncMock(return_value=True)
+    return mock_qdrant
 
 
-@pytest.fixture
-def mock_weaviate():
-    """Mock Weaviate client"""
-    with patch('weaviate.Client') as mock:
-        mock_instance = Mock()
-        mock_instance.query.get.return_value.with_limit.return_value.do.return_value = {
-            "data": {"Get": {"Product": []}}
-        }
-        mock_instance.data_object.create.return_value = {"id": "test-id"}
-        mock.return_value = mock_instance
-        yield mock_instance
-
+# ============================================================================
+# HTTP CLIENT FIXTURES
+# ============================================================================
 
 @pytest.fixture
-def sample_product_data():
-    """Sample product data for testing"""
-    return {
-        "id": 1,
-        "magento_product_id": 123,
-        "store_id": 1,
-        "sku": "TEST-PRODUCT-001",
-        "name": "Test Product",
-        "description": "This is a test product description",
-        "price": 99.99,
-        "special_price": 79.99,
-        "status": 1,
-        "visibility": 4,
-        "is_in_stock": True,
-        "qty": 100,
-        "category_ids": [1, 2, 3],
-        "attributes": {
-            "color": "red",
-            "size": "large",
-            "brand": "test-brand"
-        },
-        "url_key": "test-product",
-        "image_url": "https://example.com/test-product.jpg"
-    }
-
-
-@pytest.fixture
-def sample_search_request():
-    """Sample search request data"""
-    return {
-        "query": "test product",
-        "store_id": 1,
-        "limit": 10,
-        "offset": 0,
-        "filters": {},
-        "sort": "relevance"
-    }
-
-
-@pytest.fixture
-def sample_analytics_event():
-    """Sample analytics event data"""
-    return {
-        "event_type": "search",
-        "event_data": {
-            "query": "test search",
-            "results_count": 5,
-            "clicked_position": 1
-        },
-        "user_id": 123,
-        "session_id": "test-session-123",
-        "store_id": 1,
-        "ip_address": "127.0.0.1",
-        "user_agent": "Test Browser 1.0"
-    }
-
-
-@pytest.fixture
-def sample_recommendation_request():
-    """Sample recommendation request data"""
-    return {
-        "context": "homepage",
-        "user_id": 123,
-        "store_id": 1,
-        "limit": 12,
-        "product_id": None,
-        "category_id": None
-    }
-
-
-@pytest.fixture(autouse=True)
-def reset_mocks():
-    """Reset all mocks before each test"""
-    yield
-    # This runs after each test
-    # Add any cleanup logic here if needed
-
-
-class TestDataFactory:
-    """Factory for creating test data"""
+async def http_client():
+    """Create async HTTP client for API testing"""
+    import httpx
     
-    @staticmethod
-    def create_product(**kwargs):
-        """Create test product data"""
-        default_data = {
-            "id": 1,
-            "magento_product_id": 123,
-            "store_id": 1,
-            "sku": "TEST-001",
-            "name": "Test Product",
-            "description": "Test description",
-            "price": 99.99,
-            "status": 1,
-            "visibility": 4,
-            "is_in_stock": True,
-            "category_ids": [1, 2]
-        }
-        default_data.update(kwargs)
-        return default_data
-    
-    @staticmethod
-    def create_search_query(**kwargs):
-        """Create test search query"""
-        default_data = {
-            "query": "test",
-            "store_id": 1,
-            "limit": 10,
-            "offset": 0
-        }
-        default_data.update(kwargs)
-        return default_data
-    
-    @staticmethod
-    def create_analytics_event(**kwargs):
-        """Create test analytics event"""
-        default_data = {
-            "event_type": "page_view",
-            "event_data": {},
-            "user_id": 1,
-            "session_id": "test-session",
-            "store_id": 1
-        }
-        default_data.update(kwargs)
-        return default_data
+    async with httpx.AsyncClient(
+        base_url="http://localhost:7001",
+        timeout=30.0
+    ) as client:
+        yield client
 
 
 @pytest.fixture
-def test_data_factory():
-    """Test data factory fixture"""
-    return TestDataFactory
+def auth_headers(test_api_key) -> dict:
+    """Create authorization headers"""
+    api_key, _ = test_api_key
+    return {"Authorization": f"Bearer {api_key}"}
 
 
-# Performance testing fixtures
+# ============================================================================
+# SKIP CONDITION FIXTURES
+# ============================================================================
+
 @pytest.fixture
-def performance_timer():
-    """Timer for performance testing"""
-    import time
-    
-    class Timer:
-        def __init__(self):
-            self.start_time = None
-            self.end_time = None
-        
-        def start(self):
-            self.start_time = time.time()
-        
-        def stop(self):
-            self.end_time = time.time()
-        
-        @property
-        def elapsed(self):
-            if self.start_time and self.end_time:
-                return self.end_time - self.start_time
-            return None
-    
-    return Timer()
+def requires_redis(redis_client):
+    """Marker fixture that requires Redis"""
+    return redis_client
 
 
-# Async testing helpers
 @pytest.fixture
-async def async_client():
-    """Async test client"""
-    from httpx import AsyncClient
-    from backend.search_service.main import app
-    
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        yield ac
+def requires_elasticsearch():
+    """Marker fixture that requires Elasticsearch"""
+    import httpx
+    try:
+        response = httpx.get("http://localhost:9200/_cluster/health", timeout=1)
+        if response.status_code != 200:
+            pytest.skip("Elasticsearch not available")
+    except Exception:
+        pytest.skip("Elasticsearch not available")
 
 
-# Environment setup
-@pytest.fixture(autouse=True, scope="session")
-def setup_test_environment():
-    """Setup test environment"""
-    # Set environment variables for testing
-    os.environ["TESTING"] = "true"
-    os.environ["LOG_LEVEL"] = "DEBUG"
-    
+@pytest.fixture
+def requires_qdrant():
+    """Marker fixture that requires Qdrant"""
+    import httpx
+    try:
+        response = httpx.get("http://localhost:6333/", timeout=1)
+        if response.status_code != 200:
+            pytest.skip("Qdrant not available")
+    except Exception:
+        pytest.skip("Qdrant not available")
+
+
+# ============================================================================
+# CLEANUP FIXTURES
+# ============================================================================
+
+@pytest_asyncio.fixture(autouse=True)
+async def cleanup_after_test():
+    """Auto cleanup after each test"""
     yield
     
-    # Cleanup
-    if "TESTING" in os.environ:
-        del os.environ["TESTING"]
-
-
-# Markers for different test types
-def pytest_configure(config):
-    """Configure pytest markers"""
-    config.addinivalue_line(
-        "markers", "unit: mark test as a unit test"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as an integration test"
-    )
-    config.addinivalue_line(
-        "markers", "performance: mark test as a performance test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
-
-
-# Skip tests if dependencies are not available
-def pytest_collection_modifyitems(config, items):
-    """Modify test collection to skip tests with missing dependencies"""
-    import redis
-    import elasticsearch
-    
-    # Check if Redis is available
-    try:
-        r = redis.Redis(host='localhost', port=6379, db=1)
-        r.ping()
-        redis_available = True
-    except:
-        redis_available = False
-    
-    # Check if Elasticsearch is available
-    try:
-        es = elasticsearch.Elasticsearch([{'host': 'localhost', 'port': 9200}])
-        es.ping()
-        elasticsearch_available = True
-    except:
-        elasticsearch_available = False
-    
-    skip_redis = pytest.mark.skip(reason="Redis not available")
-    skip_elasticsearch = pytest.mark.skip(reason="Elasticsearch not available")
-    
-    for item in items:
-        if "redis" in item.keywords and not redis_available:
-            item.add_marker(skip_redis)
-        if "elasticsearch" in item.keywords and not elasticsearch_available:
-            item.add_marker(skip_elasticsearch)
+    # Add any global cleanup logic here
+    # For example, clearing caches, resetting mocks, etc.

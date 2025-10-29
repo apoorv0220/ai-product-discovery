@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://discovery:discovery123@localhost:5432/discovery_suite"
+    DATABASE_URL: str = "postgresql+asyncpg://ai_user:ai_password_2024@localhost:7010/ai_discovery"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
     DATABASE_ECHO: bool = False
@@ -44,9 +44,10 @@ class Settings(BaseSettings):
     ELASTICSEARCH_USERNAME: Optional[str] = None
     ELASTICSEARCH_PASSWORD: Optional[str] = None
     
-    # Weaviate
-    WEAVIATE_URL: str = "http://localhost:8065"
-    WEAVIATE_API_KEY: Optional[str] = None
+    # Qdrant (Vector Database)
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_GRPC_PORT: int = 6334
     
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
@@ -76,6 +77,10 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 100
     RATE_LIMIT_BURST: int = 20
+    RATE_LIMIT_FREE: int = 100
+    RATE_LIMIT_BASIC: int = 1000
+    RATE_LIMIT_PRO: int = 5000
+    RATE_LIMIT_ENTERPRISE: int = 10000
     
     # Search Service Specific
     SEARCH_DEFAULT_LIMIT: int = 20

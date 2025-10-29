@@ -25,6 +25,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.config.settings import AnalyticsServiceSettings
 from shared.database.base import init_database, close_database
+from shared.middleware.correlation_id import CorrelationIDMiddleware
+from shared.middleware.auth import APIKeyAuthMiddleware
+from shared.middleware.rate_limiter import RateLimitMiddleware
+from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from api import events, dashboard, reports, health
@@ -119,7 +123,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add middleware
+# Add middleware in execution order (FastAPI executes in reverse order of addition)
+# Execution order: CorrelationID -> Auth -> RateLimit -> Metrics -> GZip -> CORS
+
+# 1. CORS (executes last in response, first in request routing)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -128,32 +135,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 2. GZip compression
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all requests"""
-    start_time = time.time()
-    
-    # Log request
-    logger.info("Request started", 
-                method=request.method, 
-                url=str(request.url),
-                user_agent=request.headers.get("user-agent", ""))
-    
-    response = await call_next(request)
-    
-    # Log response
-    process_time = time.time() - start_time
-    logger.info("Request completed",
-                method=request.method,
-                url=str(request.url),
-                status_code=response.status_code,
-                process_time=process_time)
-    
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+# 3. Metrics (needs to measure everything, executes after other middleware)
+app.add_middleware(PrometheusMetricsMiddleware, service_name="analytics-service")
+
+# 4. Rate Limiting (needs merchant context from auth)
+app.add_middleware(
+    RateLimitMiddleware,
+    redis_url=settings.REDIS_URL,
+    burst_allowance=20,
+    exempt_paths={"/health", "/health/", "/metrics", "/metrics/", "/docs", "/redoc", "/openapi.json"}
+)
+
+# 5. Authentication (validates API key, sets merchant context)
+app.add_middleware(
+    APIKeyAuthMiddleware,
+    exempt_paths={
+        "/", "/health", "/health/", "/metrics", "/metrics/",
+        "/docs", "/docs/", "/redoc", "/redoc/", "/openapi.json", "/favicon.ico"
+    }
+)
+
+# 6. Correlation ID (executes first to set correlation ID for all downstream)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 # Exception handler
@@ -170,6 +176,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"error": "Internal server error", "detail": str(exc) if settings.DEBUG else "An error occurred"}
     )
 
+
+# Add metrics endpoint (must be exempt from auth)
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return metrics_endpoint()
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
