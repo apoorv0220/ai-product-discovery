@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     ELASTICSEARCH_INDEX_PREFIX: str = "discovery"
     ELASTICSEARCH_USERNAME: Optional[str] = None
     ELASTICSEARCH_PASSWORD: Optional[str] = None
+    ELASTICSEARCH_REQUEST_TIMEOUT: int = 30
+    ELASTICSEARCH_MAX_RETRIES: int = 3
+    ELASTICSEARCH_RETRY_ON_TIMEOUT: bool = True
     
     # Qdrant (Vector Database)
     QDRANT_URL: str = "http://localhost:6333"

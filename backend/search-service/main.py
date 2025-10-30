@@ -33,6 +33,8 @@ from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpo
 from api import search, autocomplete, index, health
 from core.elasticsearch_client import ElasticsearchManager
 from core.ml_engine import MLEngine
+from core.cache import SearchCache
+import redis.asyncio as redis_async
 
 
 # Configure structured logging
@@ -74,6 +76,18 @@ async def lifespan(app: FastAPI):
         app.state.elasticsearch = es_manager
         logger.info("Elasticsearch initialized")
         
+        # Initialize Redis cache for search
+        try:
+            redis_client = await redis_async.from_url(
+                settings.REDIS_URL,
+                encoding="utf-8",
+                decode_responses=True,
+            )
+            app.state.search_cache = SearchCache(redis_client)
+            logger.info("Search cache initialized")
+        except Exception as e:
+            logger.warning("Failed to initialize Redis cache for search", error=str(e))
+
         # Initialize ML Engine
         ml_engine = MLEngine()
         await ml_engine.initialize()
@@ -99,6 +113,13 @@ async def lifespan(app: FastAPI):
         # Cleanup Elasticsearch
         if hasattr(app.state, 'elasticsearch'):
             await app.state.elasticsearch.close()
+
+        # Close Redis cache
+        if hasattr(app.state, 'search_cache'):
+            try:
+                await app.state.search_cache.redis.close()
+            except Exception:
+                pass
         
         # Close database connections
         await close_database()

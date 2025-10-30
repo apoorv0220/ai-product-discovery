@@ -8,7 +8,7 @@ AI Product Discovery Suite - Search Service Autocomplete API
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
-from fastapi import APIRouter, Request, Query, Body
+from fastapi import APIRouter, Request, Query, Body, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import structlog
@@ -485,14 +485,69 @@ async def _process_autocomplete_request(q: str, limit: int = 10, user_id: str = 
 
 @router.get("/")
 async def get_autocomplete(
-    q: str = Query(..., description="Partial search query"),
+    q: str = Query(..., description="Partial search query", max_length=100),
     limit: int = Query(10, description="Number of suggestions"),
     user_id: str = Query(None, description="User ID for personalization"),
     session_id: str = Query(None, description="Session ID for anonymous personalization"),
     request: Request = None
 ):
-    """Get autocomplete suggestions via GET with personalization"""
-    return await _process_autocomplete_request(q, limit, user_id, session_id)
+    """Elasticsearch-backed autocomplete (Phase 1)."""
+    try:
+        from core.autocomplete_builder import AutocompleteQueryBuilder
+        from core.elasticsearch_client import ElasticsearchManager
+        es_client: ElasticsearchManager = request.app.state.elasticsearch
+        search_cache = getattr(request.app.state, 'search_cache', None)
+        builder = AutocompleteQueryBuilder()
+        merchant_id = getattr(request.state, "merchant_id", None)
+        query = builder.build_autocomplete_query(merchant_id, q, limit)
+
+        # Cache
+        cache_key = None
+        cached = None
+        if search_cache:
+            cache_key = search_cache.generate_cache_key('autocomplete', merchant_id, q)
+            cached = await search_cache.get_cached(cache_key)
+
+        if cached is None:
+            results = await es_client.search(merchant_id, query, from_=0, size=min(limit, 20))
+        else:
+            results = cached
+        hits = results.get("hits", {}).get("hits", [])
+        suggestions = []
+        for h in hits:
+            src = h.get("_source", {})
+            suggestions.append({
+                'suggestion': src.get('name', ''),
+                'title': src.get('name', ''),
+                'type': 'product',
+                'count': 1,
+                'id': src.get('product_id'),
+                'sku': src.get('sku', ''),
+                'price': src.get('price'),
+                'currency': src.get('currency'),
+                'image': src.get('image_url', ''),
+                'url': src.get('url', ''),
+                'category': None,
+            })
+        resp = {
+            'suggestions': suggestions,
+            'query': q,
+            'autocomplete_metadata': {
+                'nlp_processing': False,
+                'typo_corrections': 0,
+                'intent_detection': False,
+                'semantic_search': False,
+                'total_suggestions': len(suggestions),
+                'cache_status': 'hit' if cached is not None else 'miss',
+                'correlation_id': getattr(request.state, 'correlation_id', ''),
+            },
+        }
+        if cached is None and search_cache and cache_key:
+            await search_cache.cache_result(cache_key, results, search_cache.AUTOCOMPLETE_TTL)
+        return resp
+    except Exception as e:
+        logger.error("Autocomplete failed", error=str(e))
+        raise HTTPException(status_code=500, detail={"error": "Autocomplete failed"})
 
 @router.post("/")
 async def post_autocomplete(

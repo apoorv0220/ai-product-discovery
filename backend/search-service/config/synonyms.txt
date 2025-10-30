@@ -1,0 +1,4 @@
+hoodie, sweatshirt, pullover
+tshirt, t-shirt, tee
+sneakers, shoes, trainers
+
