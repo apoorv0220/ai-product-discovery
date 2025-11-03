@@ -68,12 +68,15 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         Returns:
             True if path is exempt
         """
-        # Exact match
+        # Exact match first
         if path in self.EXEMPT_PATHS:
             return True
         
-        # Check if path starts with exempt paths
+        # Prefix-match for specific exempt prefixes, but avoid '/' catching everything
         for exempt_path in self.EXEMPT_PATHS:
+            if exempt_path == "/":
+                # Only exact '/' should be exempt, not every route
+                continue
             if path.startswith(exempt_path):
                 return True
         
@@ -90,11 +93,12 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         Returns:
             Response
         """
-        # Skip authentication for exempt paths
-        if self.is_path_exempt(request.url.path):
-            return await call_next(request)
-        
         try:
+            # Skip authentication for exempt paths
+            if self.is_path_exempt(request.url.path):
+                logger.debug("Path exempt from authentication", path=request.url.path)
+                return await call_next(request)
+            
             # Extract API key from Authorization header
             auth_header = request.headers.get("Authorization", "")
             
@@ -129,69 +133,111 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 )
             
             api_key = parts[1]
+            key_prefix = APIKeyManager.extract_prefix(api_key) if api_key else ""
             
             # Validate API key
+            logger.debug("Validating API key",
+                       path=request.url.path,
+                       key_prefix=key_prefix)
+            
             # Get database session
-            async for db in get_db():
-                api_key_manager = APIKeyManager(db)
-                merchant_context = await api_key_manager.validate_api_key(api_key)
-                
-                if not merchant_context:
-                    logger.warning("Invalid API key",
-                                  path=request.url.path,
-                                  method=request.method)
-                    return JSONResponse(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        content={
-                            "error": "Unauthorized",
-                            "message": "Invalid or expired API key",
-                            "hint": "Check your API key or generate a new one"
-                        },
-                        headers={"WWW-Authenticate": "Bearer"}
-                    )
-                
-                # Check merchant status
-                if merchant_context.get("merchant_status") != "active":
-                    logger.warning("Inactive merchant",
-                                  merchant_id=merchant_context.get("merchant_id"),
-                                  status=merchant_context.get("merchant_status"))
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={
-                            "error": "Forbidden",
-                            "message": "Merchant account is not active",
-                            "hint": "Contact support to reactivate your account"
-                        }
-                    )
-                
-                # Inject merchant context into request state
-                request.state.merchant_id = merchant_context["merchant_id"]
-                request.state.merchant_name = merchant_context["merchant_name"]
-                request.state.merchant_tier = merchant_context["merchant_tier"]
-                request.state.api_key_id = merchant_context["api_key_id"]
-                request.state.rate_limit = merchant_context["rate_limit_per_minute"]
-                request.state.scopes = merchant_context["scopes"]
-                
-                logger.info("Request authenticated",
-                           merchant_id=merchant_context["merchant_id"],
-                           merchant_name=merchant_context["merchant_name"],
+            try:
+                async for db in get_db():
+                    try:
+                        
+                        api_key_manager = APIKeyManager(db)
+                        merchant_context = await api_key_manager.validate_api_key(api_key)
+                    except Exception as e:
+                        logger.error("API key validation raised exception",
+                                     error=str(e),
+                                     error_type=type(e).__name__,
+                                     path=request.url.path,
+                                     method=request.method,
+                                     key_prefix=key_prefix,
+                                     exc_info=True)
+                        return JSONResponse(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            content={
+                                "error": "Internal Server Error",
+                                "message": "Authentication backend error"
+                            }
+                        )
+                    
+                    if not merchant_context:
+                        logger.warning("Invalid API key",
+                                      path=request.url.path,
+                                      method=request.method,
+                                      key_prefix=key_prefix)
+                        return JSONResponse(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            content={
+                                "error": "Unauthorized",
+                                "message": "Invalid or expired API key",
+                                "hint": "Check your API key or generate a new one"
+                            },
+                            headers={"WWW-Authenticate": "Bearer"}
+                        )
+                    
+                    # Check merchant status
+                    if merchant_context.get("merchant_status") != "active":
+                        logger.warning("Inactive merchant",
+                                      merchant_id=merchant_context.get("merchant_id"),
+                                      status=merchant_context.get("merchant_status"))
+                        return JSONResponse(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            content={
+                                "error": "Forbidden",
+                                "message": "Merchant account is not active",
+                                "hint": "Contact support to reactivate your account"
+                            }
+                        )
+                    
+                    # Inject merchant context into request state
+                    request.state.merchant_id = merchant_context["merchant_id"]
+                    request.state.merchant_name = merchant_context["merchant_name"]
+                    request.state.merchant_tier = merchant_context["merchant_tier"]
+                    request.state.api_key_id = merchant_context["api_key_id"]
+                    request.state.rate_limit = merchant_context["rate_limit_per_minute"]
+                    request.state.scopes = merchant_context["scopes"]
+                    
+                    logger.debug("Request authenticated",
+                                merchant_id=merchant_context["merchant_id"],
+                                merchant_name=merchant_context["merchant_name"],
+                                path=request.url.path,
+                                method=request.method)
+                    
+                    # Continue to next middleware/handler
+                    response = await call_next(request)
+                    
+                    # Add merchant context to response headers (for debugging)
+                    response.headers["X-Merchant-ID"] = str(merchant_context["merchant_id"])
+                    response.headers["X-Rate-Limit"] = str(merchant_context["rate_limit_per_minute"])
+                    
+                    return response
+                    
+            except Exception as e:
+                logger.error("Failed to obtain database session for API key validation",
+                           error=str(e),
+                           error_type=type(e).__name__,
                            path=request.url.path,
-                           method=request.method)
-                
-                # Continue to next middleware/handler
-                response = await call_next(request)
-                
-                # Add merchant context to response headers (for debugging)
-                response.headers["X-Merchant-ID"] = str(merchant_context["merchant_id"])
-                response.headers["X-Rate-Limit"] = str(merchant_context["rate_limit_per_minute"])
-                
-                return response
+                           method=request.method,
+                           key_prefix=key_prefix,
+                           exc_info=True)
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={
+                        "error": "Internal Server Error",
+                        "message": "Authentication service unavailable"
+                    }
+                )
         
         except Exception as e:
             logger.error("Authentication middleware error",
                         error=str(e),
+                        error_type=type(e).__name__,
                         path=request.url.path,
-                        method=request.method)
+                        method=request.method,
+                        exc_info=True)
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={

@@ -33,13 +33,42 @@ from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpo
 from api import search, autocomplete, index, health
 from core.elasticsearch_client import ElasticsearchManager
 from core.ml_engine import MLEngine
+from fastapi.openapi.utils import get_openapi
 from core.cache import SearchCache
 import redis.asyncio as redis_async
 
+# Initialize settings first
+settings = SearchServiceSettings()
 
-# Configure structured logging
-structlog.configure(
-    processors=[
+# Map LOG_LEVEL string to logging constants
+LOG_LEVEL_MAP = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+# Configure standard library logging first (required for structlog)
+# Respect LOG_LEVEL from environment or settings
+log_level_str = settings.LOG_LEVEL.upper()
+log_level = LOG_LEVEL_MAP.get(log_level_str, logging.INFO)
+
+logging.basicConfig(
+    format="%(message)s",
+    stream=sys.stdout,
+    level=log_level
+)
+
+# Set root logger level to match our LOG_LEVEL (required for structlog filtering)
+logging.getLogger().setLevel(log_level)
+
+# Configure processors based on log level
+# At INFO level, use simpler human-readable format; at DEBUG, use full JSON
+if log_level == logging.DEBUG:
+    # DEBUG: Full JSON with all details
+    processors = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
@@ -49,7 +78,22 @@ structlog.configure(
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.processors.JSONRenderer()
-    ],
+    ]
+else:
+    # INFO and above: Human-readable format (not JSON)
+    processors = [
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        # Human-readable console renderer for INFO level
+        structlog.dev.ConsoleRenderer(colors=False)
+    ]
+
+# Configure structured logging
+structlog.configure(
+    processors=processors,
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
     wrapper_class=structlog.stdlib.BoundLogger,
@@ -129,10 +173,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Error during shutdown", error=str(e))
 
-
-# Initialize settings
-settings = SearchServiceSettings()
-
 # Create FastAPI application
 app = FastAPI(
     title="AI Product Discovery Suite - Search Service",
@@ -171,6 +211,29 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+# Add global Bearer auth (Authorize button in Swagger) applied to all endpoints
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    components = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    components["APIKeyAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "APIKey",
+        "description": "Paste your API key (ak_...)"
+    }
+    openapi_schema["security"] = [{"APIKeyAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Add middleware in execution order (FastAPI executes in reverse order of addition)
 # Execution order: CorrelationID -> Auth -> RateLimit -> Metrics -> GZip -> CORS

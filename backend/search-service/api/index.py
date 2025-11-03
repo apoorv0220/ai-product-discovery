@@ -8,7 +8,7 @@ AI Product Discovery Suite - Search Service Indexing API
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException, status
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import structlog
@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path
 
+from shared.middleware.auth import get_merchant_id
 from core.elasticsearch_client import ElasticsearchManager
 from core.elasticsearch_mappings import get_product_index_settings, PRODUCT_INDEX_MAPPING
 from core.synonym_loader import FileSynonymLoader
@@ -30,12 +31,14 @@ SYNONYMS_PATH = Path(os.path.dirname(os.path.dirname(__file__))) / "config" / "s
 async def get_index_status(request: Request):
     """Get status of the search index for current merchant."""
     try:
+        merchant_id = get_merchant_id(request)
         es: ElasticsearchManager = request.app.state.elasticsearch
-        merchant_id = getattr(request.state, "merchant_id", None)
         index_name = es.get_index_name(merchant_id)
         exists = await es._execute_with_retry(es.client.indices.exists, index=index_name) if es.client else False
         stats = await es.get_index_stats(merchant_id) if exists else {}
         return {"index": index_name, "exists": bool(exists), "stats": stats}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to get index status", error=str(e))
         return {"error": str(e)}
@@ -67,7 +70,7 @@ class IndexResponse(BaseModel):
 async def index_products(index_request: IndexRequest, request: Request):
     """Index products for search"""
     try:
-        merchant_id = getattr(request.state, "merchant_id", None)
+        merchant_id = get_merchant_id(request)
         await _ensure_index(request, merchant_id)
         es: ElasticsearchManager = request.app.state.elasticsearch
         indexer = ProductIndexer(es)
@@ -85,6 +88,8 @@ async def index_products(index_request: IndexRequest, request: Request):
             indexed_count=result.success_count,
             message=("Indexed successfully" if result.failure_count == 0 else f"Indexed with {result.failure_count} errors"),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error indexing products", error=str(e))
         return IndexResponse(
@@ -98,7 +103,7 @@ async def index_products(index_request: IndexRequest, request: Request):
 async def delete_product_from_index(product_id: str, request: Request):
     """Delete a product from the search index"""
     try:
-        merchant_id = getattr(request.state, "merchant_id", None)
+        merchant_id = get_merchant_id(request)
         es: ElasticsearchManager = request.app.state.elasticsearch
         indexer = ProductIndexer(es)
         ok = await indexer.delete_product(merchant_id, product_id)
@@ -106,6 +111,8 @@ async def delete_product_from_index(product_id: str, request: Request):
         if cache:
             await cache.invalidate_merchant_cache(merchant_id)
         return {"success": ok, "message": ("Deleted" if ok else "Not found or failed")}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error deleting product from index", error=str(e))
         return {"success": False, "message": str(e)}
@@ -115,9 +122,11 @@ async def delete_product_from_index(product_id: str, request: Request):
 async def ensure_index(request: Request):
     """Ensure the ES index exists for current merchant (creates if missing) with synonyms loaded."""
     try:
-        merchant_id = getattr(request.state, "merchant_id", None)
+        merchant_id = get_merchant_id(request)
         await _ensure_index(request, merchant_id)
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Failed to ensure index", error=str(e))
         return {"success": False, "error": str(e)}

@@ -17,6 +17,8 @@ import os
 import re
 from rapidfuzz import fuzz, process
 
+from shared.middleware.auth import get_merchant_id
+
 # Import updated schemas
 try:
     from ..schemas.autocomplete_updated import (
@@ -498,7 +500,7 @@ async def get_autocomplete(
         es_client: ElasticsearchManager = request.app.state.elasticsearch
         search_cache = getattr(request.app.state, 'search_cache', None)
         builder = AutocompleteQueryBuilder()
-        merchant_id = getattr(request.state, "merchant_id", None)
+        merchant_id = get_merchant_id(request)
         query = builder.build_autocomplete_query(merchant_id, q, limit)
 
         # Cache

@@ -149,10 +149,32 @@ class ElasticsearchManager:
         assert self.client is not None, "Elasticsearch client not initialized"
         index = self.get_index_name(merchant_id)
         start = asyncio.get_event_loop().time()
-        result = await self._execute_with_retry(self.client.search, index=index, body=query, from_=from_, size=size)
+        
+        # Query builder already includes from and size in the query body
+        # But we need to ensure they match the passed parameters (override if needed)
+        query_with_pagination = query.copy()
+        query_with_pagination['from'] = from_
+        query_with_pagination['size'] = size
+        
+        # Use only body parameter, not separate from_/size params to avoid "multiple values" error
+        result = await self._execute_with_retry(self.client.search, index=index, body=query_with_pagination)
         duration = asyncio.get_event_loop().time() - start
         record_elasticsearch_query("search", duration, "search-service")
-        return result
+        
+        # Convert Elasticsearch response to dict if it's an ObjectApiResponse
+        if hasattr(result, 'body'):
+            return result.body
+        elif hasattr(result, 'to_dict'):
+            return result.to_dict()
+        elif isinstance(result, dict):
+            return result
+        else:
+            # Fallback: try to convert to dict
+            import json
+            try:
+                return json.loads(json.dumps(result, default=str))
+            except:
+                return dict(result) if hasattr(result, '__dict__') else result
 
     async def bulk(self, actions) -> Dict[str, Any]:
         assert self.client is not None and async_bulk is not None, "Elasticsearch client not initialized"

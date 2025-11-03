@@ -65,8 +65,15 @@ async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
 
 # Backwards-compatible alias for middleware expecting get_db
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async for session in get_database_session():
-        yield session
+    """Backwards-compatible alias - directly yields database session"""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 async def init_database():

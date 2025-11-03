@@ -66,7 +66,6 @@ PRODUCT_INDEX_MAPPING: Dict = {
         "attributes": {"type": "object", "enabled": False},
         "url": {"type": "keyword"},
         "image_url": {"type": "keyword"},
-        "_version": {"type": "long"},
         "created_at": {"type": "date"},
         "updated_at": {"type": "date"},
     }

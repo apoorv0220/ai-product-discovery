@@ -15,6 +15,8 @@ from pydantic import validator
 import structlog
 import time
 
+from shared.middleware.auth import get_merchant_id
+
 # Import updated schemas
 try:
     from ..schemas.search_updated import (
@@ -70,7 +72,7 @@ class SearchResponse(BaseModel):
 async def search_products(search_request: SearchRequest, request: Request):
     """Elasticsearch-powered product search with observability."""
     start_time = time.time()
-    merchant_id = getattr(request.state, "merchant_id", None)
+    merchant_id = get_merchant_id(request)
     correlation_id = getattr(request.state, "correlation_id", "")
 
     if not search_request.query or len(search_request.query) > 500:

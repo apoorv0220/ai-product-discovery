@@ -256,6 +256,9 @@ class APIKeyManager:
             
             result = await self.db.execute(query, {"key_prefix": key_prefix})
             rows = result.fetchall()
+            logger.info("API key lookup by prefix",
+                        key_prefix=key_prefix,
+                        candidate_count=len(rows))
             
             # Try to verify against each potential match
             for row in rows:
@@ -289,11 +292,15 @@ class APIKeyManager:
                     return context
             
             # No matching key found
-            logger.warning("API key validation failed", key_prefix=key_prefix)
+            logger.warning("API key validation failed",
+                           key_prefix=key_prefix,
+                           reason="no candidates matched or bcrypt verify failed")
             return None
             
         except Exception as e:
-            logger.error("API key validation error", error=str(e))
+            logger.error("API key validation error",
+                         error=str(e),
+                         key_prefix=key_prefix)
             return None
     
     async def revoke_api_key(
@@ -370,7 +377,7 @@ class APIKeyManager:
             status_filter = "" if include_revoked else "AND status != 'revoked'"
             
             query = text(f"""
-                SELECT id, key_prefix, name, description, rate_limit_per_minute,
+                SELECT id, merchant_id, key_prefix, name, description, rate_limit_per_minute,
                        status, scopes, last_used_at, usage_count, created_at,
                        expires_at, revoked_at, revoked_reason
                 FROM api_keys
@@ -386,18 +393,19 @@ class APIKeyManager:
             for row in rows:
                 keys.append({
                     "id": row[0],
-                    "key_prefix": row[1],
-                    "name": row[2],
-                    "description": row[3],
-                    "rate_limit_per_minute": row[4],
-                    "status": row[5],
-                    "scopes": row[6],
-                    "last_used_at": row[7],
-                    "usage_count": row[8],
-                    "created_at": row[9],
-                    "expires_at": row[10],
-                    "revoked_at": row[11],
-                    "revoked_reason": row[12]
+                    "merchant_id": row[1],
+                    "key_prefix": row[2],
+                    "name": row[3],
+                    "description": row[4],
+                    "rate_limit_per_minute": row[5],
+                    "status": row[6],
+                    "scopes": row[7],
+                    "last_used_at": row[8],
+                    "usage_count": row[9],
+                    "created_at": row[10],
+                    "expires_at": row[11],
+                    "revoked_at": row[12],
+                    "revoked_reason": row[13]
                 })
             
             return keys
