@@ -503,17 +503,27 @@ async def get_autocomplete(
         merchant_id = get_merchant_id(request)
         query = builder.build_autocomplete_query(merchant_id, q, limit)
 
-        # Cache
+        # Cache (include limit in cache key)
         cache_key = None
         cached = None
         if search_cache:
-            cache_key = search_cache.generate_cache_key('autocomplete', merchant_id, q)
+            cache_key = search_cache.generate_cache_key(
+                'autocomplete', 
+                merchant_id, 
+                q,
+                limit=limit,
+                offset=0  # Autocomplete doesn't use offset, but include for consistency
+            )
             cached = await search_cache.get_cached(cache_key)
 
         if cached is None:
             results = await es_client.search(merchant_id, query, from_=0, size=min(limit, 20))
         else:
+            # Use cached results, but ensure we slice to requested limit if needed
             results = cached
+            hits = results.get("hits", {}).get("hits", [])
+            if len(hits) > limit:
+                results["hits"]["hits"] = hits[:limit]
         hits = results.get("hits", {}).get("hits", [])
         suggestions = []
         for h in hits:

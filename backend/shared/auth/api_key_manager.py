@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 import bcrypt
 import json
+import time
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
@@ -47,14 +48,18 @@ class APIKeyManager:
         'enterprise': 10000
     }
     
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis_client=None):
         """
         Initialize API Key Manager
         
         Args:
             db: Async database session
+            redis_client: Optional Redis client for caching API keys
         """
         self.db = db
+        self.redis_client = redis_client
+        self.CACHE_TTL = 600  # 10 minutes cache TTL
+        self.CACHE_PREFIX = "api_key:"
     
     @staticmethod
     def generate_key(environment: str = 'live') -> str:
@@ -229,7 +234,7 @@ class APIKeyManager:
     
     async def validate_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
         """
-        Validate API key and return merchant context
+        Validate API key and return merchant context with Redis caching.
         
         Args:
             api_key: Plain text API key to validate
@@ -237,10 +242,33 @@ class APIKeyManager:
         Returns:
             Dictionary with merchant context if valid, None otherwise
         """
+        start_time = time.time()
+        key_prefix = self.extract_prefix(api_key)
+        cache_key = f"{self.CACHE_PREFIX}{api_key}"
+        
         try:
-            key_prefix = self.extract_prefix(api_key)
+            # Try to get from cache first
+            if self.redis_client:
+                try:
+                    cached_data = await self.redis_client.get(cache_key)
+                    if cached_data:
+                        cache_duration = time.time() - start_time
+                        logger.info("API key validated (cache hit)",
+                                   key_prefix=key_prefix,
+                                   cache_duration_ms=cache_duration * 1000)
+                        # Record cache hit metric
+                        try:
+                            from shared.monitoring.metrics import record_api_key_validation
+                            record_api_key_validation("cache_hit", cache_duration, cache_status="hit")
+                        except ImportError:
+                            pass
+                        return json.loads(cached_data)
+                except Exception as cache_error:
+                    logger.debug("Cache lookup failed, falling back to database",
+                                error=str(cache_error))
             
-            # Find potential matching keys by prefix
+            # Cache miss or no Redis - query database
+            db_start = time.time()
             from sqlalchemy import text
             query = text("""
                 SELECT ak.id, ak.merchant_id, ak.key_hash, ak.name,
@@ -256,14 +284,21 @@ class APIKeyManager:
             
             result = await self.db.execute(query, {"key_prefix": key_prefix})
             rows = result.fetchall()
+            db_query_duration = time.time() - db_start
+            
             logger.info("API key lookup by prefix",
                         key_prefix=key_prefix,
-                        candidate_count=len(rows))
+                        candidate_count=len(rows),
+                        db_query_duration_ms=db_query_duration * 1000)
             
             # Try to verify against each potential match
             for row in rows:
+                verify_start = time.time()
                 if self.verify_key(api_key, row[2]):  # row[2] is key_hash
-                    # Update last used timestamp
+                    verify_duration = time.time() - verify_start
+                    total_duration = time.time() - start_time
+                    
+                    # Update last used timestamp (async, don't block)
                     update_query = text("""
                         UPDATE api_keys 
                         SET last_used_at = CURRENT_TIMESTAMP,
@@ -285,22 +320,58 @@ class APIKeyManager:
                         "scopes": row[6]
                     }
                     
+                    # Cache the result
+                    if self.redis_client:
+                        try:
+                            await self.redis_client.setex(
+                                cache_key,
+                                self.CACHE_TTL,
+                                json.dumps(context)
+                            )
+                        except Exception as cache_error:
+                            logger.debug("Failed to cache API key validation",
+                                       error=str(cache_error))
+                    
                     logger.info("API key validated",
                                merchant_id=context["merchant_id"],
-                               key_prefix=key_prefix)
+                               key_prefix=key_prefix,
+                               total_duration_ms=total_duration * 1000,
+                               db_query_duration_ms=db_query_duration * 1000,
+                               verify_duration_ms=verify_duration * 1000)
+                    
+                    # Record metrics
+                    try:
+                        from shared.monitoring.metrics import record_api_key_validation
+                        cache_status = "miss" if not self.redis_client else "miss"
+                        record_api_key_validation("cache_miss", total_duration, cache_status=cache_status)
+                    except ImportError:
+                        pass
                     
                     return context
             
             # No matching key found
+            total_duration = time.time() - start_time
             logger.warning("API key validation failed",
                            key_prefix=key_prefix,
-                           reason="no candidates matched or bcrypt verify failed")
+                           reason="no candidates matched or bcrypt verify failed",
+                           total_duration_ms=total_duration * 1000)
+            
+            # Record failed validation metric
+            try:
+                from shared.monitoring.metrics import record_api_key_validation
+                cache_status = "unavailable" if not self.redis_client else "miss"
+                record_api_key_validation("failed", total_duration, cache_status=cache_status)
+            except ImportError:
+                pass
+            
             return None
             
         except Exception as e:
+            total_duration = time.time() - start_time
             logger.error("API key validation error",
                          error=str(e),
-                         key_prefix=key_prefix)
+                         key_prefix=key_prefix,
+                         total_duration_ms=total_duration * 1000)
             return None
     
     async def revoke_api_key(

@@ -144,8 +144,19 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             try:
                 async for db in get_db():
                     try:
+                        # Get Redis client from app state if available (for API key caching)
+                        redis_client = None
+                        try:
+                            # Try to get Redis client from app state
+                            # Different services store it differently
+                            if hasattr(request.app.state, 'search_cache'):
+                                redis_client = request.app.state.search_cache.redis
+                            elif hasattr(request.app.state, 'redis_client'):
+                                redis_client = request.app.state.redis_client
+                        except Exception:
+                            pass  # Redis client not available, continue without caching
                         
-                        api_key_manager = APIKeyManager(db)
+                        api_key_manager = APIKeyManager(db, redis_client=redis_client)
                         merchant_context = await api_key_manager.validate_api_key(api_key)
                     except Exception as e:
                         logger.error("API key validation raised exception",

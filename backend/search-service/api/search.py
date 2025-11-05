@@ -93,24 +93,34 @@ async def search_products(search_request: SearchRequest, request: Request):
             from_=search_request.offset,
         )
 
-        # Cache key
+        # Cache key (include pagination parameters)
         cache_key = None
         cached = None
         if search_cache:
             cache_key = search_cache.generate_cache_key(
-                "search", merchant_id, search_request.query, search_request.filters
+                "search", 
+                merchant_id, 
+                search_request.query, 
+                search_request.filters,
+                limit=search_request.limit,
+                offset=search_request.offset
             )
             cached = await search_cache.get_cached(cache_key)
 
         if cached is None:
             results = await es_client.search(
-            merchant_id=merchant_id,
-            query=es_query,
-            from_=search_request.offset,
-            size=search_request.limit,
-        )
+                merchant_id=merchant_id,
+                query=es_query,
+                from_=search_request.offset,
+                size=search_request.limit,
+            )
         else:
+            # Use cached results, but ensure we slice to requested limit if needed
             results = cached
+            # Ensure cached results match requested pagination (safety check)
+            hits = results.get("hits", {}).get("hits", [])
+            if len(hits) > search_request.limit:
+                results["hits"]["hits"] = hits[:search_request.limit]
 
         hits = results.get("hits", {}).get("hits", [])
         total = results.get("hits", {}).get("total", {}).get("value", 0)

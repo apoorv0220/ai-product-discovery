@@ -20,10 +20,33 @@ class SearchCache:
     def __init__(self, redis_client: redis_async.Redis):
         self.redis = redis_client
 
-    def generate_cache_key(self, cache_type: str, merchant_id: int, query: str, filters: Optional[Dict] = None) -> str:
+    def generate_cache_key(
+        self, 
+        cache_type: str, 
+        merchant_id: int, 
+        query: str, 
+        filters: Optional[Dict] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None
+    ) -> str:
+        """
+        Generate cache key including pagination parameters.
+        
+        Args:
+            cache_type: Type of cache (search, autocomplete)
+            merchant_id: Merchant ID
+            query: Search query
+            filters: Optional filters dict
+            limit: Optional limit for pagination
+            offset: Optional offset for pagination
+            
+        Returns:
+            Cache key string
+        """
         normalized_query = self._normalize_query(query)
         filter_hash = self._hash_filters(filters) if filters else ""
-        return f"{cache_type}:{self.CACHE_VERSION}:m{merchant_id}:{normalized_query}:{filter_hash}"
+        pagination = f":l{limit}:o{offset}" if limit is not None and offset is not None else ""
+        return f"{cache_type}:{self.CACHE_VERSION}:m{merchant_id}:{normalized_query}:{filter_hash}{pagination}"
 
     async def get_cached(self, key: str) -> Optional[Dict]:
         data = await self.redis.get(key)

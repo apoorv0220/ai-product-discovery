@@ -93,6 +93,22 @@ auth_failures_total = Counter(
     registry=REGISTRY
 )
 
+# API Key validation metrics
+api_key_validation_duration_seconds = Histogram(
+    'api_key_validation_duration_seconds',
+    'API key validation duration in seconds',
+    ['result', 'service'],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 15.0),
+    registry=REGISTRY
+)
+
+api_key_validation_total = Counter(
+    'api_key_validation_total',
+    'Total API key validation attempts',
+    ['result', 'cache_status', 'service'],
+    registry=REGISTRY
+)
+
 # ============================================================================
 # CACHE METRICS
 # ============================================================================
@@ -470,6 +486,28 @@ def record_rate_limit_exceeded(merchant_id: int, tier: str, service: str):
     rate_limit_exceeded_total.labels(
         merchant_id=str(merchant_id),
         tier=tier,
+        service=service
+    ).inc()
+
+
+def record_api_key_validation(result: str, duration: float, service: str = "search-service", cache_status: str = "unknown"):
+    """
+    Record API key validation metrics
+    
+    Args:
+        result: Validation result (cache_hit, cache_miss, failed)
+        duration: Validation duration in seconds
+        service: Service name
+        cache_status: Cache status (hit, miss, unavailable)
+    """
+    api_key_validation_duration_seconds.labels(
+        result=result,
+        service=service
+    ).observe(duration)
+    
+    api_key_validation_total.labels(
+        result=result,
+        cache_status=cache_status,
         service=service
     ).inc()
 
