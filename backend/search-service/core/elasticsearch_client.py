@@ -49,101 +49,63 @@ class ElasticsearchManager:
             http_auth = (self.settings.ELASTICSEARCH_USERNAME, self.settings.ELASTICSEARCH_PASSWORD)
 
         self.client = AsyncElasticsearch(
-            hosts=[self.settings.ELASTICSEARCH_URL],
-            basic_auth=http_auth,
-            request_timeout=self.settings.ELASTICSEARCH_REQUEST_TIMEOUT,
-            retry_on_timeout=self.settings.ELASTICSEARCH_RETRY_ON_TIMEOUT,
-            max_retries=self.settings.ELASTICSEARCH_MAX_RETRIES,
+            [self.settings.ELASTICSEARCH_URL],
+            http_auth=http_auth,
+            request_timeout=30,
+            max_retries=3,
+            retry_on_timeout=True,
         )
 
-        # Verify connection/health
-        await self.health_check()
+        # Verify cluster health
+        try:
+            health = await self.client.cluster.health(wait_for_status="yellow", timeout="10s")
+            logger.info("Elasticsearch cluster health verified", status=health.get("status"))
+        except Exception as e:
+            logger.warning("Elasticsearch cluster health check failed", error=str(e))
+            # Don't fail initialization if health check fails - cluster might be starting up
+
         self.initialized = True
-        logger.info("Elasticsearch manager initialized")
 
     async def close(self) -> None:
         """Close the Elasticsearch client."""
-        if self.client is not None:
-            try:
+        if self.client:
                 await self.client.close()
-            except Exception as e:
-                logger.warning("Error closing Elasticsearch client", error=str(e))
         self.initialized = False
-        logger.info("Elasticsearch manager closed")
 
-    async def health_check(self) -> Dict[str, Any]:
-        """Return cluster health; raises if unreachable."""
-        assert self.client is not None, "Elasticsearch client not initialized"
-        try:
-            start = asyncio.get_event_loop().time()
-            health = await self.client.cluster.health()
-            duration = asyncio.get_event_loop().time() - start
-            record_elasticsearch_query("health", duration, "search-service")
-            logger.info("Elasticsearch health", status=health.get("status"))
-            return health
-        except Exception as e:
-            elasticsearch_errors_total.labels(error_type="health", service="search-service").inc()
-            logger.error("Elasticsearch health check failed", error=str(e))
-            raise
-
-    def get_index_name(self, merchant_id: int, prefix: str = "discovery_products") -> str:
-        """Generate normalized per-merchant index name."""
-        return f"{prefix}_m{int(merchant_id)}".lower()
+    def get_index_name(self, merchant_id: int) -> str:
+        """Get the index name for a merchant."""
+        return f"discovery_products_m{merchant_id}"
 
     async def _execute_with_retry(self, func, *args, **kwargs):
-        """Execute an ES call with simple exponential backoff."""
-        retries = max(0, int(self.settings.ELASTICSEARCH_MAX_RETRIES))
-        attempt = 0
-        last_exc: Optional[Exception] = None
-        while attempt <= retries:
+        """Execute an Elasticsearch operation with retry logic."""
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
                 return await func(*args, **kwargs)
-            except Exception as e:  # ApiError or Timeout
-                last_exc = e
-                elasticsearch_errors_total.labels(error_type=type(e).__name__, service="search-service").inc()
-                if attempt == retries:
-                    break
-                backoff = 2 ** attempt
-                logger.warning("Elasticsearch call failed, retrying", attempt=attempt + 1, backoff_s=backoff)
-                await asyncio.sleep(backoff)
-                attempt += 1
-        assert last_exc is not None
-        raise last_exc
-
-    async def ensure_index(self, merchant_id: int, settings: Dict[str, Any], mapping: Dict[str, Any]) -> bool:
-        """Create index for merchant if it doesn't exist (idempotent)."""
-        assert self.client is not None, "Elasticsearch client not initialized"
-        index = self.get_index_name(merchant_id)
-
-        exists = await self._execute_with_retry(self.client.indices.exists, index=index)
-        if exists:
-            return True
-
-        body = {"settings": settings, "mappings": mapping}
-        await self._execute_with_retry(self.client.indices.create, index=index, body=body)
-        logger.info("Created Elasticsearch index", index=index, merchant_id=merchant_id)
-        return True
-
-    async def delete_index(self, merchant_id: int) -> bool:
-        assert self.client is not None, "Elasticsearch client not initialized"
-        index = self.get_index_name(merchant_id)
-        exists = await self._execute_with_retry(self.client.indices.exists, index=index)
-        if not exists:
-            return True
-        await self._execute_with_retry(self.client.indices.delete, index=index)
-        logger.info("Deleted Elasticsearch index", index=index, merchant_id=merchant_id)
-        return True
-
-    async def refresh_index(self, merchant_id: int) -> bool:
-        assert self.client is not None, "Elasticsearch client not initialized"
-        index = self.get_index_name(merchant_id)
-        await self._execute_with_retry(self.client.indices.refresh, index=index)
-        return True
-
-    async def get_index_stats(self, merchant_id: int) -> Dict[str, Any]:
-        assert self.client is not None, "Elasticsearch client not initialized"
-        index = self.get_index_name(merchant_id)
-        return await self._execute_with_retry(self.client.indices.stats, index=index)
+            except ApiError as e:
+                elasticsearch_errors_total.labels(
+                    error_type=type(e).__name__,
+                    service="search-service"
+                ).inc()
+                
+                if attempt == max_retries - 1:
+                    logger.error("Elasticsearch operation failed after retries",
+                               error=str(e),
+                               error_type=type(e).__name__,
+                               attempts=max_retries)
+                    raise
+                
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.warning("Elasticsearch operation failed, retrying",
+                             error=str(e),
+                             attempt=attempt + 1,
+                             wait_time=wait_time)
+                await asyncio.sleep(wait_time)
+            except Exception as e:
+                logger.error("Unexpected error in Elasticsearch operation",
+                           error=str(e),
+                           error_type=type(e).__name__)
+                raise
 
     async def search(self, merchant_id: int, query: Dict[str, Any], from_: int, size: int) -> Dict[str, Any]:
         assert self.client is not None, "Elasticsearch client not initialized"

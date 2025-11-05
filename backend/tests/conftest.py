@@ -37,9 +37,44 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: Integration tests (require services)")
     config.addinivalue_line("markers", "regression: Regression tests (prevent breaking changes)")
     config.addinivalue_line("markers", "slow: Slow tests (skip in quick runs)")
+    config.addinivalue_line("markers", "performance: Performance tests (may be slow in test environments)")
+    config.addinivalue_line("markers", "slow_environment: Tests that may be slow in test environments")
     config.addinivalue_line("markers", "requires_redis: Requires Redis connection")
     config.addinivalue_line("markers", "requires_elasticsearch: Requires Elasticsearch")
     config.addinivalue_line("markers", "requires_qdrant: Requires Qdrant")
+
+
+# ============================================================================
+# PERFORMANCE TEST HELPERS
+# ============================================================================
+
+def get_performance_threshold(production_threshold: float, test_multiplier: float = 10.0) -> float:
+    """
+    Get performance threshold based on environment.
+    
+    In test environments (CI, local development), Elasticsearch may be slow due to:
+    - Cold indices (no warm-up)
+    - Limited resources (512MB heap)
+    - GC pauses
+    - Segment merging
+    
+    Args:
+        production_threshold: Expected threshold in production (ms)
+        test_multiplier: Multiplier for test environments (default 10x)
+    
+    Returns:
+        Threshold appropriate for current environment
+    """
+    # Check if we're in a test environment
+    is_test_env = (
+        os.getenv("TEST_ENV") == "true" or
+        os.getenv("CI") == "true" or
+        os.getenv("ENVIRONMENT", "").lower() in ["test", "testing", "development"]
+    )
+    
+    if is_test_env:
+        return production_threshold * test_multiplier
+    return production_threshold
 
 
 # ============================================================================
@@ -207,6 +242,90 @@ def mock_qdrant(mocker):
 # ============================================================================
 # HTTP CLIENT FIXTURES
 # ============================================================================
+
+@pytest_asyncio.fixture(scope="function")
+async def initialized_search_app():
+    """Initialize FastAPI app with all required state for search service tests"""
+    import sys
+    import os
+    from fastapi import FastAPI
+    
+    # Add search-service to path
+    search_service_path = os.path.join(os.path.dirname(__file__), '..', 'search-service')
+    if search_service_path not in sys.path:
+        sys.path.insert(0, search_service_path)
+    
+    from main import app
+    from core.elasticsearch_client import ElasticsearchManager
+    from core.cache import SearchCache
+    from core.ml_engine import MLEngine
+    import redis.asyncio as redis_async
+    
+    # Initialize app state (simulating lifespan startup)
+    try:
+        # Initialize Elasticsearch
+        es_manager = ElasticsearchManager()
+        await es_manager.initialize()
+        app.state.elasticsearch = es_manager
+        
+        # Initialize Redis cache
+        try:
+            redis_client = await redis_async.from_url(
+                settings.REDIS_URL,
+                encoding="utf-8",
+                decode_responses=True,
+            )
+            app.state.search_cache = SearchCache(redis_client)
+        except Exception:
+            app.state.search_cache = None
+        
+        # Initialize ML Engine (optional - not critical for Phase 1)
+        try:
+            ml_engine = MLEngine()
+            await ml_engine.initialize()
+            app.state.ml_engine = ml_engine
+        except Exception as e:
+            logger.warning("ML Engine initialization failed, continuing without it", error=str(e))
+            app.state.ml_engine = None
+        
+        yield app
+        
+    finally:
+        # Cleanup (simulating lifespan shutdown)
+        try:
+            if hasattr(app.state, 'ml_engine'):
+                await app.state.ml_engine.cleanup()
+        except Exception:
+            pass
+        
+        try:
+            if hasattr(app.state, 'elasticsearch'):
+                await app.state.elasticsearch.close()
+        except Exception:
+            pass
+        
+        try:
+            if hasattr(app.state, 'search_cache') and app.state.search_cache:
+                await app.state.search_cache.redis.close()
+        except Exception:
+            pass
+
+
+@pytest_asyncio.fixture
+async def search_client(initialized_search_app):
+    """Create async HTTP client for search service with initialized app state
+    
+    Uses httpx.AsyncClient with ASGITransport to properly handle async operations
+    that TestClient cannot handle (like asyncio.timeout context managers).
+    """
+    import httpx
+    from httpx import ASGITransport
+    
+    # Use ASGITransport to properly handle async operations
+    transport = ASGITransport(app=initialized_search_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+
 
 @pytest.fixture
 async def http_client():

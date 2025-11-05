@@ -109,11 +109,11 @@ async def search_products(search_request: SearchRequest, request: Request):
 
         if cached is None:
             results = await es_client.search(
-                merchant_id=merchant_id,
-                query=es_query,
-                from_=search_request.offset,
-                size=search_request.limit,
-            )
+            merchant_id=merchant_id,
+            query=es_query,
+            from_=search_request.offset,
+            size=search_request.limit,
+        )
         else:
             # Use cached results, but ensure we slice to requested limit if needed
             results = cached
