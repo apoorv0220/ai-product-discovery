@@ -7,7 +7,7 @@ from typing import Dict, List
 class QuickVerifier:
     def __init__(self):
         self.services = {
-            "Search Service": {"port": 7001, "path": "/health/", "swagger": "/docs"},
+            "Search Service": {"port": 7099, "path": "/health/", "swagger": "/docs"},
             "Recommendation Service": {"port": 7002, "path": "/health/", "swagger": "/docs"},
             "Analytics Service": {"port": 7004, "path": "/health/", "swagger": "/docs"},
             "Shopping Assistant": {"port": 7005, "path": "/health/", "swagger": "/docs"}
@@ -84,10 +84,14 @@ class QuickVerifier:
         
         print("\n--- Access URLs ---")
         for name, config in self.services.items():
-            if name == "Search Service": print(f"  - {name} Swagger UI: http://localhost:{config["port"]}{config["swagger"]}")
-            if name == "Recommendation Service": print(f"  - {name} Swagger UI: http://localhost:{config["port"]}{config["swagger"]}")
-            if name == "Analytics Service": print(f"  - {name} Swagger UI: http://localhost:{config["port"]}{config["swagger"]}")
-            if name == "Shopping Assistant": print(f"  - {name} Swagger UI: http://localhost:{config["port"]}{config["swagger"]}")
+            if name == "Search Service":
+                print(f"  - {name} Swagger UI: http://localhost:{config['port']}{config['swagger']}")
+            if name == "Recommendation Service":
+                print(f"  - {name} Swagger UI: http://localhost:{config['port']}{config['swagger']}")
+            if name == "Analytics Service":
+                print(f"  - {name} Swagger UI: http://localhost:{config['port']}{config['swagger']}")
+            if name == "Shopping Assistant":
+                print(f"  - {name} Swagger UI: http://localhost:{config['port']}{config['swagger']}")
         print(f"  - Elasticsearch: http://localhost:{self.infrastructure['Elasticsearch']['port']}{self.infrastructure['Elasticsearch']['path']}")
         print(f"  - Weaviate: http://localhost:{self.infrastructure['Weaviate']['port']}{self.infrastructure['Weaviate']['path']}")
 

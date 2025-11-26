@@ -539,16 +539,52 @@ class Data extends AbstractHelper
      */
     public function getServiceUrl(string $service, string $endpoint = '', $storeId = null): string
     {
-        $baseUrl = $this->getApiBaseUrl($storeId);
-        
-        // Use localhost if base URL is not configured or for local development
-        if (empty($baseUrl) || $baseUrl === 'http://localhost' || strpos($baseUrl, 'localhost') !== false) {
+        $baseUrl = $this->getApiBaseUrl($storeId) ?: '';
+
+        // Default to localhost if nothing configured
+        if (empty($baseUrl)) {
             $baseUrl = 'http://localhost';
         }
-        
+
+        $baseUrl = rtrim($baseUrl, '/');
+        $endpoint = $endpoint ? (strpos($endpoint, '/') === 0 ? $endpoint : '/' . $endpoint) : '';
+
         $port = $this->servicePorts[$service] ?? 7001;
-        
-        return $baseUrl . ':' . $port . $endpoint;
+
+        $appendPort = false;
+        $parsed = parse_url($baseUrl);
+
+        // If port is already in URL, never append another one
+        if ($parsed && isset($parsed['port'])) {
+            return $baseUrl . $endpoint;
+        }
+
+        if (!$parsed || empty($parsed['host'])) {
+            // Unable to parse - assume it needs a port
+            $appendPort = true;
+        } else {
+            $host = $parsed['host'];
+            
+            // Check if it's ngrok domain (never append port for ngrok)
+            $isNgrok = strpos($host, 'ngrok-free.dev') !== false || 
+                       strpos($host, 'ngrok.io') !== false ||
+                       strpos($host, 'ngrok.app') !== false;
+            
+            // Check if it's localhost or IP (append port for these)
+            $isLocalHost = in_array($host, ['localhost', '127.0.0.1', '0.0.0.0'], true);
+            $isIpAddress = filter_var($host, FILTER_VALIDATE_IP) !== false;
+
+            // Only append port for localhost/IP addresses, NOT for ngrok or other domains
+            if (($isLocalHost || $isIpAddress) && !$isNgrok) {
+                $appendPort = true;
+            }
+        }
+
+        if ($appendPort) {
+            return $baseUrl . ':' . $port . $endpoint;
+        }
+
+        return $baseUrl . $endpoint;
     }
 
     /**

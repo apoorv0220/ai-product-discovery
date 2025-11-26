@@ -30,12 +30,15 @@ from shared.middleware.correlation_id import CorrelationIDMiddleware
 from shared.middleware.auth import APIKeyAuthMiddleware
 from shared.middleware.rate_limiter import RateLimitMiddleware
 from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
-from api import search, autocomplete, index, health
+from api import search, autocomplete, index, health, semantic_search
 from core.elasticsearch_client import ElasticsearchManager
 from core.ml_engine import MLEngine
+from core.embedding_service import EmbeddingService
+from core.qdrant_client import QdrantManager
 from fastapi.openapi.utils import get_openapi
 from core.cache import SearchCache
 import redis.asyncio as redis_async
+from shared.config.qdrant import QDRANT_CONFIG
 
 # Initialize settings first
 settings = SearchServiceSettings()
@@ -138,6 +141,29 @@ async def lifespan(app: FastAPI):
         app.state.ml_engine = ml_engine
         logger.info("ML Engine initialized")
         
+        # Initialize Embedding Service
+        try:
+            embedding_service = EmbeddingService()
+            await embedding_service.initialize()
+            app.state.embedding_service = embedding_service
+            logger.info("Embedding service initialized")
+        except Exception as e:
+            logger.warning("Failed to initialize embedding service", error=str(e))
+            # Continue without embeddings - semantic search will be disabled
+        
+        # Initialize Qdrant Manager
+        try:
+            qdrant_manager = QdrantManager(
+                url=QDRANT_CONFIG["url"],
+                api_key=QDRANT_CONFIG["api_key"]
+            )
+            await qdrant_manager.initialize()
+            app.state.qdrant_manager = qdrant_manager
+            logger.info("Qdrant manager initialized")
+        except Exception as e:
+            logger.warning("Failed to initialize Qdrant manager", error=str(e))
+            # Continue without Qdrant - semantic search will be disabled
+        
         logger.info("Search Service started successfully")
         
         yield
@@ -153,6 +179,14 @@ async def lifespan(app: FastAPI):
         # Cleanup ML Engine
         if hasattr(app.state, 'ml_engine'):
             await app.state.ml_engine.cleanup()
+        
+        # Cleanup Embedding Service
+        if hasattr(app.state, 'embedding_service'):
+            await app.state.embedding_service.cleanup()
+        
+        # Cleanup Qdrant Manager
+        if hasattr(app.state, 'qdrant_manager'):
+            await app.state.qdrant_manager.close()
         
         # Cleanup Elasticsearch
         if hasattr(app.state, 'elasticsearch'):
@@ -298,6 +332,7 @@ async def metrics():
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(semantic_search.router, prefix="/api/v1/search/semantic", tags=["search"])
 app.include_router(autocomplete.router, prefix="/api/v1/autocomplete", tags=["autocomplete"])
 app.include_router(index.router, prefix="/api/v1/index", tags=["indexing"])
 # tracking endpoints are temporarily disabled until personalization models are wired

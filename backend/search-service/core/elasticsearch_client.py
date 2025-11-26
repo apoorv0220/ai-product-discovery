@@ -141,3 +141,53 @@ class ElasticsearchManager:
     async def bulk(self, actions) -> Dict[str, Any]:
         assert self.client is not None and async_bulk is not None, "Elasticsearch client not initialized"
         return await async_bulk(self.client, actions)
+    
+    async def ensure_index(self, merchant_id: int, settings: Dict[str, Any], mappings: Dict[str, Any]) -> None:
+        """Ensure an index exists with the given settings and mappings."""
+        assert self.client is not None, "Elasticsearch client not initialized"
+        
+        index_name = self.get_index_name(merchant_id)
+        
+        try:
+            exists = await self._execute_with_retry(self.client.indices.exists, index=index_name)
+            
+            if not exists:
+                logger.info("Creating Elasticsearch index", index=index_name)
+                await self._execute_with_retry(
+                    self.client.indices.create,
+                    index=index_name,
+                    settings=settings,
+                    mappings=mappings
+                )
+                logger.info("Elasticsearch index created", index=index_name)
+            else:
+                logger.debug("Elasticsearch index already exists", index=index_name)
+                
+        except Exception as e:
+            logger.error("Failed to ensure index", index=index_name, error=str(e))
+            raise
+    
+    async def get_index_stats(self, merchant_id: int) -> Dict[str, Any]:
+        """Get statistics for a merchant's index."""
+        assert self.client is not None, "Elasticsearch client not initialized"
+        
+        index_name = self.get_index_name(merchant_id)
+        
+        try:
+            stats = await self._execute_with_retry(self.client.indices.stats, index=index_name)
+            return stats
+        except Exception as e:
+            logger.error("Failed to get index stats", index=index_name, error=str(e))
+            return {}
+    
+    async def refresh_index(self, merchant_id: int) -> None:
+        """Refresh an index to make recent changes visible."""
+        assert self.client is not None, "Elasticsearch client not initialized"
+        
+        index_name = self.get_index_name(merchant_id)
+        
+        try:
+            await self._execute_with_retry(self.client.indices.refresh, index=index_name)
+            logger.debug("Index refreshed", index=index_name)
+        except Exception as e:
+            logger.warning("Failed to refresh index", index=index_name, error=str(e))

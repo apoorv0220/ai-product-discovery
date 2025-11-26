@@ -95,6 +95,23 @@ class QdrantManager:
             logger.error("Qdrant health check failed", error=str(e))
             return False
     
+    async def ensure_collection(
+        self,
+        merchant_id: int,
+        model_name: str = DEFAULT_EMBEDDING_MODEL
+    ) -> bool:
+        """
+        Ensure product collection exists for a merchant (creates if missing)
+        
+        Args:
+            merchant_id: Merchant ID
+            model_name: Embedding model name
+            
+        Returns:
+            True if collection exists or was created successfully
+        """
+        return await self.create_collection(merchant_id, model_name)
+    
     async def create_collection(
         self,
         merchant_id: int,

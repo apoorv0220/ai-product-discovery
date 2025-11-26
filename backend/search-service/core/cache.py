@@ -16,6 +16,7 @@ class SearchCache:
     CACHE_VERSION = "v1"
     SEARCH_TTL = 300
     AUTOCOMPLETE_TTL = 300
+    FACET_TTL = 3600  # Facets cached for 1 hour (longer than search results)
 
     def __init__(self, redis_client: redis_async.Redis):
         self.redis = redis_client
@@ -81,6 +82,66 @@ class SearchCache:
     def _hash_filters(self, filters: Dict) -> str:
         raw = json.dumps(filters, sort_keys=True, separators=(",", ":"))
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    
+    def generate_facet_cache_key(
+        self,
+        merchant_id: int,
+        query: str,
+        category: Optional[str] = None
+    ) -> str:
+        """
+        Generate cache key for facet configurations
+        
+        Args:
+            merchant_id: Merchant ID
+            query: Search query (normalized)
+            category: Optional category for context-aware caching
+            
+        Returns:
+            Cache key string
+        """
+        normalized_query = self._normalize_query(query)
+        category_part = f":cat_{category}" if category else ""
+        return f"facets:{self.CACHE_VERSION}:m{merchant_id}:{normalized_query}{category_part}"
+    
+    async def get_cached_facets(
+        self,
+        merchant_id: int,
+        query: str,
+        category: Optional[str] = None
+    ) -> Optional[Dict]:
+        """
+        Get cached facet configuration
+        
+        Args:
+            merchant_id: Merchant ID
+            query: Search query
+            category: Optional category
+            
+        Returns:
+            Cached facets dictionary or None
+        """
+        key = self.generate_facet_cache_key(merchant_id, query, category)
+        return await self.get_cached(key)
+    
+    async def cache_facets(
+        self,
+        merchant_id: int,
+        query: str,
+        facets: Dict,
+        category: Optional[str] = None
+    ) -> None:
+        """
+        Cache facet configuration
+        
+        Args:
+            merchant_id: Merchant ID
+            query: Search query
+            facets: Facets dictionary to cache
+            category: Optional category
+        """
+        key = self.generate_facet_cache_key(merchant_id, query, category)
+        await self.cache_result(key, facets, self.FACET_TTL)
 
 
 

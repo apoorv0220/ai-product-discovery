@@ -17,6 +17,7 @@ class SearchQueryBuilder:
         sort: Optional[str] = None,
         size: int = DEFAULT_SIZE,
         from_: int = 0,
+        aggregations: Optional[Dict] = None,
     ) -> Dict:
         size = min(max(1, size), self.MAX_SIZE)
         from_ = max(0, from_)
@@ -47,12 +48,18 @@ class SearchQueryBuilder:
 
         sort_clause = self._validate_sort(sort)
 
-        return {
+        query_dict = {
             "query": {"bool": {"must": must_clauses, "filter": filter_clauses}},
             "sort": sort_clause,
             "size": size,
             "from": from_,
         }
+        
+        # Add aggregations if provided
+        if aggregations:
+            query_dict["aggs"] = aggregations
+        
+        return query_dict
 
     def _validate_sort(self, sort: Optional[str]) -> List[Dict]:
         valid_sorts = {
@@ -63,10 +70,18 @@ class SearchQueryBuilder:
         return valid_sorts.get(sort or "", [{"_score": "desc"}])
 
     def _build_filters(self, filters: Dict) -> List[Dict]:
+        """
+        Build filter clauses from filter dictionary.
+        
+        Multi-select logic: OR within facet, AND between facets
+        - categories: ["Shoes", "Bags"] -> OR (products in Shoes OR Bags)
+        - brands: ["Nike"] AND categories: ["Shoes", "Bags"] -> AND (Nike AND (Shoes OR Bags))
+        """
         clauses: List[Dict] = []
         if not filters:
             return clauses
-        # Price range
+        
+        # Price range filter
         price = filters.get("price")
         if isinstance(price, dict):
             range_q: Dict = {}
@@ -76,17 +91,46 @@ class SearchQueryBuilder:
                 range_q["lte"] = price["max"]
             if range_q:
                 clauses.append({"range": {"price": range_q}})
-        # Categories
+        
+        # Categories filter (multi-select: OR within facet)
         categories = filters.get("categories")
         if categories:
-            clauses.append({"terms": {"categories.keyword": categories}})
-        # Brand
-        brand = filters.get("brand")
-        if brand:
-            clauses.append({"terms": {"brand": brand if isinstance(brand, list) else [brand]}})
-        # In-stock
-        if filters.get("in_stock") is True:
-            clauses.append({"term": {"in_stock": True}})
+            # Ensure it's a list
+            if not isinstance(categories, list):
+                categories = [categories]
+            if categories:
+                clauses.append({"terms": {"categories.keyword": categories}})
+        
+        # Brands filter (multi-select: OR within facet)
+        brands = filters.get("brands") or filters.get("brand")
+        if brands:
+            # Ensure it's a list
+            if not isinstance(brands, list):
+                brands = [brands]
+            if brands:
+                clauses.append({"terms": {"brand.keyword": brands}})
+        
+        # Rating filter (range)
+        rating = filters.get("rating")
+        if isinstance(rating, dict):
+            range_q: Dict = {}
+            if "min" in rating:
+                range_q["gte"] = rating["min"]
+            if "max" in rating:
+                range_q["lte"] = rating["max"]
+            if range_q:
+                clauses.append({"range": {"avg_rating": range_q}})
+        
+        # In-stock filter (boolean)
+        in_stock = filters.get("in_stock")
+        if in_stock is not None:
+            clauses.append({"term": {"in_stock": bool(in_stock)}})
+        
+        # Status filter
+        status = filters.get("status")
+        if status is not None:
+            clauses.append({"term": {"status": status}})
+        
         return clauses
 
 

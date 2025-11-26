@@ -16,8 +16,8 @@ settings = get_settings()
 
 # Qdrant connection configuration
 QDRANT_CONFIG = {
-    "url": settings.WEAVIATE_URL.replace("weaviate", "qdrant").replace("8065", "6333") if hasattr(settings, 'WEAVIATE_URL') else "http://localhost:6333",
-    "api_key": None,  # Set if using Qdrant Cloud
+    "url": settings.QDRANT_URL,
+    "api_key": settings.QDRANT_API_KEY,  # Set if using Qdrant Cloud
     "timeout": 30,
     "prefer_grpc": False,  # Use HTTP by default
     "https": False
@@ -75,12 +75,17 @@ EMBEDDING_MODELS = {
         "vector_size": 1536,
         "model_name": "text-embedding-ada-002",
         "provider": "openai"
+    },
+    "text-embedding-3-small": {
+        "vector_size": 1536,
+        "model_name": "text-embedding-3-small",
+        "provider": "openai"
     }
 }
 
 
 # Default model to use
-DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def get_collection_name(base_name: str, merchant_id: int) -> str:
