@@ -17,11 +17,75 @@ logger = structlog.get_logger()
 RRF_K = 60
 
 
+def _calibrate_scores_by_attribute_coverage(
+    results: List[Dict[str, Any]],
+    query_attributes: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    Calibrate hybrid scores based on how well products match query attributes.
+
+    Boosts products that have more of the attributes mentioned in the query.
+    This is part of Hybrid+ Scoring Tweaks for better semantic relevance.
+
+    Args:
+        results: Search results with hybrid_score
+        query_attributes: Dict with 'attributes' list and 'query' string
+
+    Returns:
+        Results with calibrated scores
+    """
+    attributes_list = query_attributes.get("attributes", [])
+    if not attributes_list:
+        return results
+
+    calibrated_results = []
+
+    for result in results:
+        score_multiplier = 1.0
+        attribute_coverage = 0
+
+        # Get product attributes
+        attributes = result.get("metadata", {}).get("attributes", {})
+
+        # Check coverage for each query attribute
+        for attr in attributes_list:
+            if attr.lower() in ["color", "colour"]:
+                if attributes.get("color"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.2  # Boost products with color info
+            elif attr.lower() in ["size", "sizing"]:
+                if attributes.get("size"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.15  # Boost products with size info
+            elif attr.lower() in ["material", "fabric"]:
+                if attributes.get("material"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.15  # Boost products with material info
+            elif attr.lower() in ["brand", "manufacturer"]:
+                if result.get("metadata", {}).get("brand"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.25  # Boost products with brand info
+
+        # Apply score calibration
+        if score_multiplier > 1.0:
+            result["hybrid_score"] *= score_multiplier
+            result["attribute_coverage"] = attribute_coverage
+            result["attribute_boost"] = score_multiplier
+
+        calibrated_results.append(result)
+
+    # Re-sort by calibrated scores
+    calibrated_results.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
+
+    return calibrated_results
+
+
 def reciprocal_rank_fusion(
     keyword_results: List[Dict[str, Any]],
     semantic_results: List[Dict[str, Any]],
     keyword_weight: float = 0.7,
-    semantic_weight: float = 0.3
+    semantic_weight: float = 0.3,
+    query_attributes: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Merge keyword and semantic search results using Reciprocal Rank Fusion (RRF)
@@ -100,11 +164,17 @@ def reciprocal_rank_fusion(
         
         merged_results.append(result)
     
+    # Apply score calibration based on attribute coverage (Hybrid+ Scoring Tweaks)
+    if query_attributes:
+        merged_results = _calibrate_scores_by_attribute_coverage(
+            merged_results, query_attributes
+        )
+
     logger.info("Merged search results",
                keyword_count=len(keyword_results),
                semantic_count=len(semantic_results),
                merged_count=len(merged_results))
-    
+
     return merged_results
 
 
@@ -117,7 +187,8 @@ async def hybrid_search(
     offset: int = 0,
     filters: Optional[Dict[str, Any]] = None,
     keyword_weight: float = 0.7,
-    semantic_weight: float = 0.3
+    semantic_weight: float = 0.3,
+    query_attributes: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Perform hybrid search combining keyword and semantic results
@@ -132,6 +203,7 @@ async def hybrid_search(
         filters: Optional filters
         keyword_weight: Weight for keyword results
         semantic_weight: Weight for semantic results
+        query_attributes: List of attributes mentioned in query for score calibration
         
     Returns:
         Dictionary with merged results and metadata
@@ -168,7 +240,8 @@ async def hybrid_search(
         keyword_results,
         semantic_results,
         keyword_weight,
-        semantic_weight
+        semantic_weight,
+        query_attributes
     )
     
     # Apply pagination

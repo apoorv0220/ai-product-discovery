@@ -24,20 +24,48 @@ class SearchQueryBuilder:
 
         must_clauses: List[Dict] = [
             {
-                "multi_match": {
-                    "query": query,
-                    "fields": [
-                        "name^3",
-                        "name.autocomplete^2",
-                        "categories^2",
-                        "description",
-                        "short_description",
-                        "sku^1.5",
+                "function_score": {
+                    "query": {
+                        "multi_match": {
+                            "query": query,
+                            "fields": [
+                                "name^3",
+                                "name.autocomplete^2",
+                                "categories^2",
+                                "description",
+                                "short_description",
+                                "sku^1.5",
+                            ],
+                            "type": "best_fields",
+                            "fuzziness": "AUTO",
+                            "operator": "or",
+                            "minimum_should_match": "70%",
+                        }
+                    },
+                    "functions": [
+                        {
+                            "filter": {"exists": {"field": "brand"}},
+                            "weight": 1.2  # Boost products with brand info
+                        },
+                        {
+                            "filter": {"exists": {"field": "attributes.color"}},
+                            "weight": 1.1  # Boost products with color attributes
+                        },
+                        {
+                            "filter": {"exists": {"field": "attributes.material"}},
+                            "weight": 1.1  # Boost products with material info
+                        },
+                        {
+                            "filter": {"term": {"categories": "hoodies & sweatshirts"}},
+                            "weight": 1.3  # Generic category boost (works for all domains)
+                        },
+                        {
+                            "filter": {"term": {"categories": "tees"}},
+                            "weight": 1.3  # Generic category boost (works for all domains)
+                        }
                     ],
-                    "type": "best_fields",
-                    "fuzziness": "AUTO",
-                    "operator": "or",
-                    "minimum_should_match": "70%",
+                    "score_mode": "multiply",
+                    "boost_mode": "multiply"
                 }
             }
         ]

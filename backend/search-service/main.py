@@ -40,6 +40,20 @@ from core.cache import SearchCache
 import redis.asyncio as redis_async
 from shared.config.qdrant import QDRANT_CONFIG
 
+# Load environment variables from .env file at project root
+try:
+    from dotenv import load_dotenv
+    import pathlib
+    # Path from backend/search-service/main.py to project root .env file
+    env_path = pathlib.Path(__file__).parent.parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"[SUCCESS] Loaded environment variables from {env_path}")
+    else:
+        print(f"[WARNING] .env file not found at {env_path}")
+except ImportError:
+    print("[WARNING] python-dotenv not available, skipping .env loading")
+
 # Initialize settings first
 settings = SearchServiceSettings()
 

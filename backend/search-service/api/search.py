@@ -83,6 +83,120 @@ class SearchResponse(BaseModel):
     facets: Optional[Dict[str, Any]] = None  # Facets for filtering
 
 
+def _calibrate_semantic_scores_by_attributes(
+    results: List[Dict[str, Any]],
+    query_attributes: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    Calibrate semantic search scores based on attribute coverage (Hybrid+ Scoring Tweaks).
+
+    For semantic search, we boost products that have attributes mentioned in the query.
+    This provides category-based intelligence even when relying on vector similarity.
+    """
+    attributes_list = query_attributes.get("attributes", [])
+    query = query_attributes.get("query", "").lower()
+
+    if not attributes_list and not query:
+        return results
+
+    calibrated_results = []
+
+    for result in results:
+        score_multiplier = 1.0
+        attribute_coverage = 0
+
+        # Get product attributes
+        attributes = result.get("metadata", {}).get("attributes", {})
+
+        # Check coverage for each query attribute
+        for attr in attributes_list:
+            if attr.lower() in ["color", "colour"]:
+                if attributes.get("color"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.3  # Stronger boost for semantic search
+            elif attr.lower() in ["size", "sizing"]:
+                if attributes.get("size"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.2
+            elif attr.lower() in ["material", "fabric"]:
+                if attributes.get("material"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.2
+            elif attr.lower() in ["brand", "manufacturer"]:
+                if result.get("metadata", {}).get("brand") or attributes.get("manufacturer"):
+                    attribute_coverage += 1
+                    score_multiplier *= 1.4  # Brand is very important for semantic search
+
+        # Category-based boosting for semantic search
+        category_names_list = result.get("metadata", {}).get("category_names", [])
+        if isinstance(category_names_list, str):
+            category_names_list = [category_names_list]
+        category_names_str = " ".join(str(cat).lower() for cat in category_names_list)
+        product_name = str(result.get("name", "")).lower()
+
+        # Boost based on product type matching query intent
+        if "top" in query or "shirt" in query or "tee" in query:
+            if "tee" in category_names_str or "top" in product_name or "shirt" in product_name:
+                score_multiplier *= 2.0  # Strong boost for tops when looking for tops
+            elif "pant" in category_names_str or "pant" in product_name:
+                score_multiplier *= 0.5  # Reduce pants when looking for tops
+
+        if "pant" in query or "trouser" in query:
+            if "pant" in category_names_str or "pant" in product_name:
+                score_multiplier *= 2.0  # Strong boost for pants when looking for pants
+            elif "tee" in category_names_str or "top" in product_name or "shirt" in product_name:
+                score_multiplier *= 0.5  # Reduce tops when looking for pants
+
+        # Apply score calibration
+        if score_multiplier > 1.0:
+            result["score"] *= score_multiplier
+            result["attribute_coverage"] = attribute_coverage
+            result["semantic_boost"] = score_multiplier
+
+        calibrated_results.append(result)
+
+    # Re-sort by calibrated scores
+    calibrated_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    return calibrated_results
+
+
+def _extract_query_attributes(query: str) -> Dict[str, Any]:
+    """
+    Extract attributes mentioned in query for score calibration (Hybrid+ Scoring Tweaks).
+
+    This enables boosting products that have the attributes mentioned in the query.
+    Domain-agnostic - works for any product type.
+
+    Args:
+        query: Search query string
+
+    Returns:
+        Dict with 'attributes' list and 'query' string for category matching
+    """
+    if not query:
+        return {"attributes": [], "query": ""}
+
+    query_lower = query.lower()
+    attributes = []
+
+    # Generic attribute keywords that work across all domains
+    attribute_keywords = {
+        "color": ["color", "colour", "colored", "coloured"],
+        "size": ["size", "sized", "sizing"],
+        "material": ["material", "fabric", "made of", "cotton", "polyester", "wool", "nylon"],
+        "brand": ["brand", "branded", "manufacturer"]
+    }
+
+    for attr, keywords in attribute_keywords.items():
+        for keyword in keywords:
+            if keyword in query_lower:
+                attributes.append(attr)
+                break  # Only add each attribute once
+
+    return {"attributes": attributes, "query": query}
+
+
 async def _perform_keyword_search(
     query: str,
     merchant_id: int,
@@ -218,12 +332,13 @@ async def _perform_semantic_search(
     qdrant_manager,
     es_client=None,
     search_cache=None,
-    include_facets: bool = True
+    include_facets: bool = True,
+    query_attributes: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Perform semantic search using Qdrant"""
     # Generate query embedding
     query_embedding = await embedding_service.generate_embedding(query)
-
+    
     # Build filter conditions
     filter_conditions = {"merchant_id": merchant_id}
     if filters:
@@ -233,21 +348,59 @@ async def _perform_semantic_search(
             filter_conditions["status"] = filters["status"]
         if "in_stock" in filters:
             filter_conditions["is_in_stock"] = bool(filters["in_stock"])
-
+    
     # Search in Qdrant
     search_results = await qdrant_manager.search(
         merchant_id=merchant_id,
         query_vector=query_embedding,
         limit=limit + offset,
-        score_threshold=0.5,
+        score_threshold=0.35,
         filter_conditions=filter_conditions if len(filter_conditions) > 1 else None
     )
-
+    
     # Apply offset
     if offset > 0:
         search_results = search_results[offset:]
-
+    
     search_results = search_results[:limit]
+
+    # Fetch full metadata for semantic results from Elasticsearch
+    if es_client and search_results:
+        product_ids = [str(r.get("product_id")) for r in search_results if r.get("product_id")]
+        if product_ids:
+            es_metadata_query = {
+                "query": {"terms": {"product_id": product_ids}},
+                "_source": ["categories", "category_ids", "attributes", "brand", "name", "description", "short_description", "price", "special_price", "image_url", "url"]
+            }
+            try:
+                es_metadata_response = await es_client.search(
+                    index=f"discovery_products_m{merchant_id}",
+                    body=es_metadata_query,
+                    size=len(product_ids)
+                )
+                es_metadata_map = {str(h["_source"]["product_id"]): h["_source"] for h in es_metadata_response["hits"]["hits"]}
+
+                # Merge full metadata into semantic results
+                for i, result in enumerate(search_results):
+                    full_metadata = es_metadata_map.get(str(result.get("product_id")))
+                    if full_metadata:
+                        # Update existing metadata with more comprehensive data from ES
+                        # Note: ES stores categories as "categories" field (which contains category names)
+                        result["metadata"].update({
+                            "categories": full_metadata.get("categories", []),  # This contains category names
+                            "category_names": full_metadata.get("categories", []),  # Duplicate for compatibility
+                            "category_ids": full_metadata.get("category_ids", []),
+                            "attributes": full_metadata.get("attributes", {}),
+                            "brand": full_metadata.get("brand"),
+                            "description": full_metadata.get("description"),
+                            "short_description": full_metadata.get("short_description"),
+                            "price": full_metadata.get("price"),
+                            "special_price": full_metadata.get("special_price"),
+                            "image_url": full_metadata.get("image_url"),
+                            "url": full_metadata.get("url"),
+                        })
+            except Exception as e:
+                logger.warning("Failed to fetch full metadata for semantic results from ES", error=str(e))
 
     # Generate facets by querying Elasticsearch (since Qdrant doesn't support aggregations)
     facets_dict = None
@@ -269,8 +422,10 @@ async def _perform_semantic_search(
             )
 
             es_response = await es_client.search(
-                index=f"products_{merchant_id}",
-                body=es_query
+                merchant_id=merchant_id,
+                query=es_query,
+                from_=0,
+                size=0
             )
 
             facets_dict = facet_generator.parse_aggregations(
@@ -280,11 +435,53 @@ async def _perform_semantic_search(
         except Exception as e:
             logger.warning("Failed to generate facets for semantic search", error=str(e))
 
-    # Format results
+    # Get full product data from Elasticsearch for metadata enrichment
+    product_ids = [str(result.get("product_id", "")) for result in search_results]
+    enriched_metadata = {}
+
+    if es_client and product_ids:
+        try:
+            # Query Elasticsearch to get full metadata for these products
+            es_query = {
+                "query": {
+                    "terms": {
+                        "product_id": product_ids
+                    }
+                },
+                "size": len(product_ids),
+                "_source": ["product_id", "categories", "category_ids", "attributes", "brand"]
+            }
+
+            es_response = await es_client.search(
+                merchant_id=merchant_id,
+                query=es_query,
+                from_=0,
+                size=len(product_ids)
+            )
+
+            # Build lookup table
+            for hit in es_response.get("hits", {}).get("hits", []):
+                src = hit.get("_source", {})
+                pid = str(src.get("product_id", ""))
+                enriched_metadata[pid] = {
+                    "categories": src.get("categories", []),
+                    "category_names": src.get("categories", []),  # categories field contains the names
+                    "category_ids": src.get("category_ids", []),
+                    "attributes": src.get("attributes", {}),
+                    "brand": src.get("brand")
+                }
+
+        except Exception as e:
+            logger.warning("Failed to enrich semantic search results with metadata", error=str(e))
+
+    # Format results with enriched metadata
     formatted = []
     for result in search_results:
+        pid = str(result.get("product_id", ""))
+        enriched = enriched_metadata.get(pid, {})
+
         formatted.append({
-            "product_id": str(result.get("product_id", "")),
+            "product_id": pid,
             "name": result.get("name", ""),
             "title": result.get("name", ""),
             "score": float(result.get("score", 0.0)),
@@ -295,12 +492,20 @@ async def _perform_semantic_search(
                 "image_url": result.get("image_url"),
                 "url_key": result.get("url_key"),
                 "category_name": result.get("category_name"),
+                "categories": enriched.get("categories", []),
+                "category_names": enriched.get("category_names", []),
+                "category_ids": enriched.get("category_ids", []),
                 "is_in_stock": result.get("is_in_stock"),
                 "description": result.get("description"),
                 "short_description": result.get("short_description"),
-                "attributes": result.get("attributes", {}),
+                "attributes": enriched.get("attributes", result.get("attributes", {})),
+                "brand": enriched.get("brand")
             }
         })
+    
+    # Apply attribute-based score calibration (Hybrid+ Scoring Tweaks)
+    if query_attributes:
+        formatted = _calibrate_semantic_scores_by_attributes(formatted, query_attributes)
 
     return {
         "results": formatted,
@@ -339,6 +544,9 @@ async def search_products(search_request: SearchRequest, request: Request):
         if search_request.hybrid_weights:
             keyword_weight = search_request.hybrid_weights.get("keyword", 0.7)
             semantic_weight = search_request.hybrid_weights.get("semantic", 0.3)
+
+        # Extract query attributes for score calibration (Hybrid+ Scoring Tweaks)
+        query_attributes = _extract_query_attributes(search_request.query)
         
         # Perform search based on mode
         facets_dict = None
@@ -369,7 +577,8 @@ async def search_products(search_request: SearchRequest, request: Request):
                 qdrant_manager,
                 es_client,
                 search_cache,
-                include_facets=True
+                include_facets=True,
+                query_attributes=query_attributes
             )
             results = result_data["results"]
             total = result_data["total"]
@@ -384,7 +593,7 @@ async def search_products(search_request: SearchRequest, request: Request):
                 return await _perform_keyword_search(q, m_id, l, o, f, es_client, search_cache, include_facets=True)
             
             async def semantic_search_func(q, m_id, l, o, f):
-                return await _perform_semantic_search(q, m_id, l, o, f, embedding_service, qdrant_manager, es_client, search_cache, include_facets=False)
+                return await _perform_semantic_search(q, m_id, l, o, f, embedding_service, qdrant_manager, es_client, search_cache, include_facets=False, query_attributes=query_attributes)
             
             hybrid_result = await hybrid_search(
                 keyword_search_func,
@@ -395,7 +604,8 @@ async def search_products(search_request: SearchRequest, request: Request):
                 search_request.offset,
                 search_request.filters,
                 keyword_weight,
-                semantic_weight
+                semantic_weight,
+                query_attributes
             )
             results = hybrid_result["results"]
             total = hybrid_result["merged_count"]
