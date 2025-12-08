@@ -62,8 +62,8 @@ def verify_environment_variables() -> Tuple[bool, Dict[str, str]]:
         'POSTGRES_USER': 'ai_user',
         'POSTGRES_PASSWORD': 'ai_password',
         'REDIS_PASSWORD': 'redis_password',
-        'SECRET_KEY': 'your-secret-key-change-in-production',
-        'JWT_SECRET_KEY': 'your-jwt-secret-key-change-in-production',
+        'SECRET_KEY': 'secret-key-change-in-production',
+        'JWT_SECRET_KEY': 'jwt-secret-key-change-in-production',
     }
     
     optional_vars = [
