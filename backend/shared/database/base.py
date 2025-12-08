@@ -89,7 +89,7 @@ async def init_database():
             # Only try to import models if we're in a service that needs them
             models_imported = False
             
-            if service_name in ['celery', 'analytics', 'recommendation']:
+            if service_name in ['celery', 'analytics', 'recommendation', 'search']:
                 # Services that need full model access
                 try:
                     from shared.models import product, user, search, recommendation, analytics
