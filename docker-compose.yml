@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "7010:5432"
+      - "${POSTGRES_EXTERNAL_PORT:-7010}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -50,6 +50,8 @@ services:
     container_name: ai_discovery_search
     ports:
       - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
+    volumes:
+      - ./scripts:/app/scripts:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -86,6 +88,8 @@ services:
     container_name: ai_discovery_recommendation
     ports:
       - "${RECOMMENDATION_SERVICE_EXTERNAL_PORT:-7002}:${RECOMMENDATION_SERVICE_PORT:-7099}"
+    volumes:
+      - ./scripts:/app/scripts:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -122,6 +126,8 @@ services:
     container_name: ai_discovery_analytics
     ports:
       - "${ANALYTICS_SERVICE_EXTERNAL_PORT:-7004}:${ANALYTICS_SERVICE_PORT:-7099}"
+    volumes:
+      - ./scripts:/app/scripts:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -158,6 +164,8 @@ services:
     container_name: ai_discovery_assistant
     ports:
       - "${SHOPPING_ASSISTANT_EXTERNAL_PORT:-7005}:${SHOPPING_ASSISTANT_PORT:-7099}"
+    volumes:
+      - ./scripts:/app/scripts:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -191,8 +199,6 @@ services:
       context: ./backend
       dockerfile: shared/Dockerfile.celery
     container_name: ai_discovery_celery_worker
-    ports:
-      - "${CELERY_WORKER_EXTERNAL_PORT:-7006}:${CELERY_WORKER_PORT:-7099}"
     environment:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
