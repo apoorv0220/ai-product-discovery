@@ -47,9 +47,12 @@ async def create_tables():
             )
         """))
 
-        # Create api_keys table
+        # Drop existing api_keys table if it exists with wrong schema
+        await conn.execute(text("DROP TABLE IF EXISTS api_keys CASCADE"))
+
+        # Create api_keys table with correct schema
         await conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS api_keys (
+            CREATE TABLE api_keys (
                 id SERIAL PRIMARY KEY,
                 merchant_id INTEGER REFERENCES merchants(id) ON DELETE CASCADE,
                 key_hash VARCHAR(255) NOT NULL,
