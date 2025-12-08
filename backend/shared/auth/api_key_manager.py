@@ -38,7 +38,7 @@ class APIKeyManager:
     # API key configuration
     KEY_PREFIX = "ak"
     KEY_LENGTH = 32
-    PREFIX_LENGTH = 8  # Length of prefix stored for identification
+    PREFIX_LENGTH = 16  # Length of prefix stored for identification (includes random chars)
     
     # Rate limit tiers (requests per minute)
     RATE_LIMITS = {
