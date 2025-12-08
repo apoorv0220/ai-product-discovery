@@ -15,12 +15,12 @@ from typing import List, Dict, Any
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from backend.shared.database.base import init_database, get_database_session
-    from backend.shared.models.product import Product, Category
-    from backend.shared.models.user import User, CustomerProfile
-    from backend.shared.models.analytics import AnalyticsEvent, UserSession
-    from backend.shared.models.search import SearchQuery, SearchLog
-    from backend.shared.models.recommendation import RecommendationLog
+    from shared.database.base import init_database, get_database_session
+    from shared.models.product import Product, Category
+    from shared.models.user import User, CustomerProfile
+    from shared.models.analytics import AnalyticsEvent, UserSession
+    from shared.models.search import SearchQuery, SearchLog
+    from shared.models.recommendation import RecommendationLog
     import structlog
 except ImportError as e:
     print(f"❌ Import error: {e}")

@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
 
-from backend.shared.config.settings import get_settings
-from backend.shared.auth.api_key_manager import APIKeyManager
+from shared.config.settings import get_settings
+from shared.auth.api_key_manager import APIKeyManager
 
 settings = get_settings()
 
