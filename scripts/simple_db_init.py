@@ -52,14 +52,17 @@ async def create_tables():
             CREATE TABLE IF NOT EXISTS api_keys (
                 id SERIAL PRIMARY KEY,
                 merchant_id INTEGER REFERENCES merchants(id) ON DELETE CASCADE,
+                key_hash VARCHAR(255) NOT NULL,
                 key_prefix VARCHAR(50) UNIQUE NOT NULL,
-                hashed_key VARCHAR(255) NOT NULL,
                 name VARCHAR(255),
                 description TEXT,
                 status VARCHAR(50) DEFAULT 'active',
                 rate_limit_per_minute INTEGER DEFAULT 100,
+                scopes JSONB DEFAULT '["read", "write"]'::jsonb,
+                expires_at TIMESTAMP WITH TIME ZONE,
+                created_by INTEGER,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                expires_at TIMESTAMP WITH TIME ZONE
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         """))
 
