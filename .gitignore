@@ -494,4 +494,7 @@ secrets/
 .yarn/
 .pnp.*
 
+*.md
+
+ngrok.*
 # End of .gitignore
