@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Union
 from collections import defaultdict
 import math
 
@@ -17,7 +17,9 @@ from sqlalchemy.orm import sessionmaker
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add backend directory to path for models import
+backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, backend_dir)
 from models.user_interactions import (
     UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
 )
@@ -44,39 +46,51 @@ class PersonalizedSearchEngine:
         self.max_history_days = 30  # Maximum days to consider for personalization
         
     async def track_product_view(
-        self, 
-        product_id: str, 
-        user_id: Optional[str] = None, 
+        self,
+        merchant_id: int,
+        product_id: str,
+        user_id: Optional[str] = None,
         session_id: str = None,
         product_name: str = None,
         product_sku: str = None,
-        categories: List[str] = None,
+        categories: List[str] = None,  # ["Electronics", "Laptops"]
+        category_ids: List[str] = None,  # ["123", "456"]
         came_from_search: bool = False,
         search_query: str = None,
-        view_duration: int = 0
+        view_duration: int = 0,
+        platform: str = None,  # "magento", "woocommerce", etc.
+        device_type: str = None,  # "mobile", "desktop", "tablet"
+        user_agent: str = None,  # Browser/device user agent
+        referrer: str = None  # Referring page URL
     ) -> bool:
         """Track a product view for personalization"""
         try:
             async with get_async_session() as session:
                 # Create product view record
                 view_record = UserProductViews(
+                    merchant_id=merchant_id,
                     user_id=user_id,
                     session_id=session_id or f"anon_{datetime.now().timestamp()}",
                     product_id=product_id,
                     product_name=product_name,
                     product_sku=product_sku,
                     categories=json.dumps(categories or []),
+                    category_ids=json.dumps(category_ids or []),
                     view_duration=view_duration,
                     came_from_search=came_from_search,
                     search_query=search_query,
-                    view_timestamp=datetime.utcnow()
+                    platform=platform or None,
+                    device_type=device_type or None,
+                    user_agent=user_agent or None,
+                    referrer=referrer or None,
+                    created_at=datetime.utcnow()
                 )
                 
                 session.add(view_record)
                 
                 # Update or create personalized weight
                 await self._update_personalized_weight(
-                    session, user_id, session_id, product_id, 
+                    session, merchant_id, user_id, session_id, product_id,
                     interaction_type="view", boost_factor=self.view_boost_factor
                 )
                 
@@ -90,9 +104,10 @@ class PersonalizedSearchEngine:
             return False
     
     async def track_search_query(
-        self, 
-        query: str, 
-        user_id: Optional[str] = None, 
+        self,
+        merchant_id: int,
+        query: str,
+        user_id: Optional[str] = None,
         session_id: str = None,
         results: List[Dict] = None
     ) -> bool:
@@ -101,11 +116,12 @@ class PersonalizedSearchEngine:
             async with get_async_session() as session:
                 # Create search history record
                 search_record = UserSearchHistory(
+                    merchant_id=merchant_id,
                     user_id=user_id,
                     session_id=session_id or f"anon_{datetime.now().timestamp()}",
                     query=query.lower().strip(),
                     results_count=len(results or []),
-                    search_timestamp=datetime.utcnow()
+                    created_at=datetime.utcnow()
                 )
                 
                 session.add(search_record)
@@ -120,6 +136,7 @@ class PersonalizedSearchEngine:
     
     async def track_search_click(
         self,
+        merchant_id: int,
         search_query: str,
         clicked_product_id: str,
         clicked_product_name: str = None,
@@ -132,20 +149,21 @@ class PersonalizedSearchEngine:
             async with get_async_session() as session:
                 # Create search click record
                 click_record = UserSearchClicks(
+                    merchant_id=merchant_id,
                     user_id=user_id,
                     session_id=session_id or f"anon_{datetime.now().timestamp()}",
                     search_query=search_query.lower().strip(),
                     clicked_product_id=clicked_product_id,
                     clicked_product_name=clicked_product_name,
                     position_in_results=position_in_results,
-                    click_timestamp=datetime.utcnow()
+                    created_at=datetime.utcnow()
                 )
                 
                 session.add(click_record)
                 
                 # Update personalized weight with search click boost
                 await self._update_personalized_weight(
-                    session, user_id, session_id, clicked_product_id,
+                    session, merchant_id, user_id, session_id, clicked_product_id,
                     interaction_type="search_click", boost_factor=self.search_click_boost
                 )
                 
@@ -184,7 +202,7 @@ class PersonalizedSearchEngine:
                 
                 # Only get recent interactions
                 cutoff_date = datetime.utcnow() - timedelta(days=self.max_history_days)
-                query = query.where(PersonalizedSearchWeights.last_interaction >= cutoff_date)
+                query = query.where(PersonalizedSearchWeights.updated_at >= cutoff_date)
                 
                 result = await session.execute(query)
                 weights = {}
@@ -204,9 +222,10 @@ class PersonalizedSearchEngine:
         search_results: List[Dict],
         user_id: Optional[str] = None,
         session_id: str = None,
-        query: str = None
+        query: str = None,
+        user_context: Optional[Dict[str, Any]] = None
     ) -> List[Dict]:
-        """Apply personalized ranking to search results"""
+        """Apply personalized ranking to search results with user context awareness"""
         try:
             if not search_results:
                 return search_results
@@ -229,7 +248,11 @@ class PersonalizedSearchEngine:
                 # No personalization data, return original results
                 logger.info(f"⚠️ No personalization weights found for session: {session_id}")
                 return search_results
-            
+
+            # Process user context for enhanced personalization
+            context_adjustments = self._process_user_context(user_context, product_ids)
+            logger.info(f"📱 User context processed: {len(context_adjustments)} adjustments")
+
             # Apply weights to results
             personalized_results = []
             for result in search_results:
@@ -242,7 +265,14 @@ class PersonalizedSearchEngine:
                 
                 # Apply personalization weight
                 personalization_weight = weights.get(product_id, 1.0)
-                
+
+                # Apply context adjustments (cart items, recently viewed, etc.)
+                context_multiplier = context_adjustments.get(product_id, 1.0)
+                personalization_weight *= context_multiplier
+
+                # Ensure weight doesn't go too low or high
+                personalization_weight = max(0.1, min(5.0, personalization_weight))
+
                 # Calculate final score
                 final_score = base_score * personalization_weight
                 
@@ -281,7 +311,7 @@ class PersonalizedSearchEngine:
         """Get user's recent search history"""
         try:
             async with get_async_session() as session:
-                query = select(UserSearchHistory).order_by(desc(UserSearchHistory.search_timestamp)).limit(limit)
+                query = select(UserSearchHistory).order_by(desc(UserSearchHistory.created_at)).limit(limit)
                 
                 if user_id:
                     query = query.where(UserSearchHistory.user_id == user_id)
@@ -297,7 +327,7 @@ class PersonalizedSearchEngine:
                     history.append({
                         'query': record.query,
                         'results_count': record.results_count,
-                        'timestamp': record.search_timestamp.isoformat(),
+                        'timestamp': record.created_at.isoformat(),
                         'clicked_products': json.loads(record.clicked_products or '[]')
                     })
                 
@@ -316,7 +346,7 @@ class PersonalizedSearchEngine:
         """Get user's recently viewed products"""
         try:
             async with get_async_session() as session:
-                query = select(UserProductViews).order_by(desc(UserProductViews.view_timestamp)).limit(limit)
+                query = select(UserProductViews).order_by(desc(UserProductViews.created_at)).limit(limit)
                 
                 if user_id:
                     query = query.where(UserProductViews.user_id == user_id)
@@ -327,7 +357,7 @@ class PersonalizedSearchEngine:
                 
                 # Only get recent views
                 cutoff_date = datetime.utcnow() - timedelta(days=self.max_history_days)
-                query = query.where(UserProductViews.view_timestamp >= cutoff_date)
+                query = query.where(UserProductViews.created_at >= cutoff_date)
                 
                 result = await session.execute(query)
                 viewed_products = []
@@ -341,7 +371,7 @@ class PersonalizedSearchEngine:
                         'view_duration': record.view_duration,
                         'came_from_search': record.came_from_search,
                         'search_query': record.search_query,
-                        'timestamp': record.view_timestamp.isoformat()
+                        'timestamp': record.created_at.isoformat()
                     })
                 
                 return viewed_products
@@ -353,6 +383,7 @@ class PersonalizedSearchEngine:
     async def _update_personalized_weight(
         self,
         session: AsyncSession,
+        merchant_id: int,
         user_id: Optional[str],
         session_id: str,
         product_id: str,
@@ -362,8 +393,10 @@ class PersonalizedSearchEngine:
         """Update personalized weight for a product"""
         try:
             # Check if weight record exists
-            query = select(PersonalizedSearchWeights)
-            
+            query = select(PersonalizedSearchWeights).where(
+                PersonalizedSearchWeights.merchant_id == merchant_id
+            )
+
             if user_id:
                 query = query.where(and_(
                     PersonalizedSearchWeights.user_id == user_id,
@@ -381,10 +414,10 @@ class PersonalizedSearchEngine:
             if weight_record:
                 # Update existing record
                 weight_record.interaction_count += 1
-                weight_record.last_interaction = datetime.utcnow()
+                weight_record.updated_at = datetime.utcnow()
                 
                 # Apply decay based on time since last interaction
-                days_since_last = (datetime.utcnow() - weight_record.last_interaction).days
+                days_since_last = (datetime.utcnow() - weight_record.updated_at).days
                 decay_factor = max(0.5, 1.0 - (days_since_last / self.decay_days))
                 
                 # Update weight with boost and decay
@@ -394,11 +427,12 @@ class PersonalizedSearchEngine:
             else:
                 # Create new record
                 weight_record = PersonalizedSearchWeights(
+                    merchant_id=merchant_id,
                     user_id=user_id,
                     session_id=session_id or f"anon_{datetime.now().timestamp()}",
                     product_id=product_id,
                     weight=1.0 + boost_factor * 0.2,  # Initial boost
-                    last_interaction=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                     interaction_count=1
                 )
                 session.add(weight_record)
@@ -407,6 +441,63 @@ class PersonalizedSearchEngine:
             
         except Exception as e:
             logger.error(f"Error updating personalized weight: {str(e)}")
+
+    def _process_user_context(self, user_context: Optional[Dict[str, Any]], product_ids: List[str]) -> Dict[str, float]:
+        """Process user context to create adjustment multipliers for personalization"""
+        adjustments = {}
+
+        if not user_context:
+            return adjustments
+
+        try:
+            # Cart items - reduce likelihood of showing items already in cart
+            cart_items = user_context.get('cart_items', [])
+            if cart_items:
+                for product_id in product_ids:
+                    if str(product_id) in [str(item) for item in cart_items]:
+                        adjustments[str(product_id)] = 0.3  # Reduce by 70%
+                        logger.debug(f"🛒 Cart item {product_id} reduced to 30% weight")
+
+            # Recently viewed - slight reduction to avoid repetition
+            recently_viewed = user_context.get('recently_viewed', [])
+            if recently_viewed:
+                for product_id in product_ids:
+                    if str(product_id) in [str(item) for item in recently_viewed]:
+                        adjustments[str(product_id)] = adjustments.get(str(product_id), 1.0) * 0.7  # Reduce by 30%
+                        logger.debug(f"👁️ Recently viewed {product_id} reduced to 70% weight")
+
+            # Wishlist items - slight boost
+            wishlist = user_context.get('wishlist', [])
+            if wishlist:
+                for product_id in product_ids:
+                    if str(product_id) in [str(item) for item in wishlist]:
+                        adjustments[str(product_id)] = adjustments.get(str(product_id), 1.0) * 1.2  # Boost by 20%
+                        logger.debug(f"❤️ Wishlist item {product_id} boosted to 120% weight")
+
+            # Purchase history - boost complementary items (simplified logic)
+            purchase_history = user_context.get('purchase_history', [])
+            if purchase_history:
+                # For now, give slight boost to items not in purchase history
+                # In future, could implement complementary product logic
+                purchased_ids = set(str(item) for item in purchase_history)
+                for product_id in product_ids:
+                    if str(product_id) not in purchased_ids:
+                        adjustments[str(product_id)] = adjustments.get(str(product_id), 1.0) * 1.1  # Slight boost
+                        logger.debug(f"🛍️ New item {product_id} boosted to 110% weight")
+
+            # Device type adjustments (optional)
+            device_type = user_context.get('device_type')
+            if device_type == 'mobile':
+                # Mobile users might prefer different ranking
+                for product_id in product_ids:
+                    adjustments[str(product_id)] = adjustments.get(str(product_id), 1.0) * 1.05  # Slight mobile boost
+
+            logger.info(f"Processed user context: {len(adjustments)} adjustments applied")
+            return adjustments
+
+        except Exception as e:
+            logger.error(f"Error processing user context: {str(e)}")
+            return {}
 
 # Global instance
 personalized_search_engine = PersonalizedSearchEngine()

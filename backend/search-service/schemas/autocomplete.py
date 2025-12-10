@@ -9,7 +9,7 @@ Reflects actual API response formats with OpenAI integration
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
@@ -24,7 +24,7 @@ class AutocompleteSuggestion(BaseModel):
     url: str = Field(default="#", description="Product or category URL")
     category: str = Field(default="General", description="Category name (not ID)")
     sku: str = Field(default="", description="Product SKU")
-    id: int = Field(default=0, description="Product ID")
+    id: Union[int, str] = Field(default=0, description="Product ID (string or integer)")
     
     # AI Enhancement Fields
     nlp_enhanced: bool = Field(default=False, description="Whether NLP processing was used")
@@ -43,9 +43,9 @@ class AutocompleteSuggestion(BaseModel):
                 "title": "Hero Hoodie",
                 "type": "product",
                 "count": 1,
-                "image": "https://magento-test.softdemonew.info/media/catalog/product/m/h/mh07-blue_main_2.jpg",
+                "image": "https://example-store.com/media/product/hero-hoodie.jpg",
                 "price": "$59.99",
-                "url": "https://magento-test.softdemonew.info/hero-hoodie.html",
+                "url": "https://example-store.com/products/hero-hoodie.html",
                 "category": "Hoodies & Sweatshirts",
                 "sku": "MH07",
                 "id": 158,
@@ -97,9 +97,9 @@ class AutocompleteResponse(BaseModel):
                         "title": "Hero Hoodie",
                         "type": "product",
                         "count": 1,
-                        "image": "https://magento-test.softdemonew.info/media/catalog/product/m/h/mh07-blue_main_2.jpg",
+                        "image": "https://example-store.com/media/product/hero-hoodie.jpg",
                         "price": "$59.99",
-                        "url": "https://magento-test.softdemonew.info/hero-hoodie.html",
+                        "url": "https://example-store.com/products/hero-hoodie.html",
                         "category": "Hoodies & Sweatshirts",
                         "sku": "MH07",
                         "id": 158,

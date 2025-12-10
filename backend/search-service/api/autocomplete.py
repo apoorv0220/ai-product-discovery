@@ -19,19 +19,14 @@ from rapidfuzz import fuzz, process
 
 from shared.middleware.auth import get_merchant_id
 
-# Import updated schemas
-try:
-    from ..schemas.autocomplete_updated import (
-        AutocompleteSuggestion,
-        AutocompleteMetadata, 
-        AutocompleteResponse as UpdatedAutocompleteResponse,
-        AutocompleteRequest as UpdatedAutocompleteRequest,
-        AutocompleteErrorResponse
-    )
-    USE_UPDATED_SCHEMAS = True
-except ImportError:
-    # Fallback to existing schemas if new ones aren't available
-    USE_UPDATED_SCHEMAS = False
+# Import schemas with AI enhancement support
+from schemas.autocomplete import (
+    AutocompleteSuggestion,
+    AutocompleteMetadata,
+    AutocompleteResponse,
+    AutocompleteRequest,
+    AutocompleteErrorResponse
+)
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -41,7 +36,7 @@ PRODUCTS_FILE = "/tmp/products_index.json"
 
 # Import advanced spell checker
 try:
-    from ..core.advanced_spell_checker import spell_checker
+    from core.advanced_spell_checker import spell_checker
     SPELL_CHECKER_AVAILABLE = True
 except ImportError:
     SPELL_CHECKER_AVAILABLE = False
@@ -175,65 +170,21 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
                 else:
                     formatted_price = "Price on request"
             
-            # Get primary category name (not ID)
+            # Get primary category name - platform-agnostic approach
             categories = product.get('categories', [])
             primary_category = 'General'
             
             if categories:
-                # Complete Magento category mappings - actual from database
-                category_map = {
-                    '1': 'Root Catalog',
-                    '2': 'Default Category', 
-                    '3': 'Gear',
-                    '4': 'Bags',
-                    '5': 'Fitness Equipment',
-                    '6': 'Watches',
-                    '7': 'Collections',
-                    '8': 'New Luma Yoga Collection',
-                    '9': 'Training',
-                    '10': 'Video Download',
-                    '11': 'Men',
-                    '12': 'Tops',
-                    '13': 'Bottoms',
-                    '14': 'Jackets',
-                    '15': 'Hoodies & Sweatshirts',
-                    '16': 'Tees',
-                    '17': 'Tanks',
-                    '18': 'Pants',
-                    '19': 'Shorts',
-                    '20': 'Women',
-                    '21': 'Tops',
-                    '22': 'Bottoms',
-                    '23': 'Jackets',
-                    '24': 'Hoodies & Sweatshirts',
-                    '25': 'Tees',
-                    '26': 'Bras & Tanks',
-                    '27': 'Pants',
-                    '28': 'Shorts',
-                    '29': 'Promotions',
-                    '30': 'Women Sale',
-                    '31': 'Men Sale',
-                    '32': 'Pants',
-                    '33': 'Tees',
-                    '34': 'Erin Recommends',
-                    '35': 'Performance Fabrics',
-                    '36': 'Eco Friendly',
-                    '37': 'Sale',
-                    '38': 'What\'s New',
-                    '39': 'Performance Sportswear New',
-                    '40': 'Eco Collection New'
-                }
-                
-                # Handle different category formats
+                # Handle different category formats generically
                 if isinstance(categories[0], dict):
-                    # Category is a dict with name/id
+                    # Category is a dict with name/id - prefer name over title
                     primary_category = categories[0].get('name', categories[0].get('title', 'General'))
                 elif isinstance(categories[0], str):
-                    # Category is a string ID, map it to name
-                    primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
+                    # Category is already a string name
+                    primary_category = categories[0]
                 else:
-                    # Fallback for any other type
-                    primary_category = category_map.get(str(categories[0]), f'Category {categories[0]}')
+                    # Convert to string for any other type
+                    primary_category = str(categories[0])
             
             all_suggestions.append({
                 'suggestion': product_name,
@@ -274,39 +225,6 @@ def get_autocomplete_suggestions(query: str, limit: int = 10):
     all_suggestions.sort(key=relevance_score)
     suggestions = all_suggestions[:limit]
     return suggestions
-
-
-class AutocompleteResult(BaseModel):
-    """Autocomplete result model"""
-    suggestion: str
-    type: str  # 'product', 'category', 'brand'
-    count: int
-    # Extended fields for Magento compatibility
-    title: Optional[str] = None
-    image: Optional[str] = None
-    price: Optional[str] = None
-    url: Optional[str] = None
-    category: Optional[str] = None
-    sku: Optional[str] = None
-    id: Optional[int] = None
-
-
-class AutocompleteResponse(BaseModel):
-    """Autocomplete response model"""
-    suggestions: List[AutocompleteResult]
-    query: str
-
-class AutocompleteRequest(BaseModel):
-    """Autocomplete request model for POST requests"""
-    q: Optional[str] = None
-    query: Optional[str] = None  # Alternative field name for compatibility
-    limit: Optional[int] = 10
-    user_id: Optional[str] = None  # User ID for personalization
-    session_id: Optional[str] = None  # Session ID for anonymous personalization
-    
-    def get_query(self) -> str:
-        """Get the query value from either q or query field"""
-        return self.q or self.query or ""
 
 
 async def _process_autocomplete_request(q: str, limit: int = 10, user_id: str = None, session_id: str = None):
@@ -601,11 +519,8 @@ async def post_autocomplete_form(
 def _get_proper_image_url(image_url: str) -> str:
     """Get proper image URL, avoiding placeholders"""
     if not image_url or 'placeholder' in image_url.lower():
-        # Return a default product image or empty string
+        # Return empty string for invalid/placeholder images
         return ''
     
-    # Ensure it's a full URL
-    if image_url.startswith('/'):
-        return f"https://magento-test.softdemonew.info{image_url}"
-    
+    # Return the image URL as-is - platform integration should provide complete URLs
     return image_url

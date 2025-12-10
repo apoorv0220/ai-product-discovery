@@ -6,7 +6,7 @@ Creates tables for user interactions and search history
 import asyncio
 import os
 import sys
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 import logging
 
@@ -36,13 +36,14 @@ async def init_personalization_db():
         
         logger.info("✅ Personalized search tables created successfully!")
         
-        # Create async engine to test connection
-        async_engine = create_async_engine(database_url)
-        
-        async with async_engine.begin() as conn:
-            # Test the connection
-            result = await conn.execute("SELECT 1")
+        # Test connection with sync engine (simpler for DDL operations)
+        # Create a simple connection test
+        test_conn = engine.connect()
+        try:
+            result = test_conn.execute(text("SELECT 1"))
             logger.info("✅ Database connection test successful")
+        finally:
+            test_conn.close()
         
         await async_engine.dispose()
         engine.dispose()

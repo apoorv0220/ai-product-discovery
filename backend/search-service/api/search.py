@@ -18,20 +18,16 @@ import time
 from shared.middleware.auth import get_merchant_id
 from core.facets import FacetGenerator
 
-# Import updated schemas
-try:
-    from ..schemas.search_updated import (
-        SearchResultItem,
-        SearchMetadata,
-        SearchResponse as UpdatedSearchResponse,
-        SearchRequest as UpdatedSearchRequest,
-        SearchCorrection,
-        SearchErrorResponse
-    )
-    USE_UPDATED_SCHEMAS = True
-except ImportError:
-    # Fallback to existing schemas if new ones aren't available
-    USE_UPDATED_SCHEMAS = False
+# Import schemas with personalization support
+from schemas.search import (
+    SearchResultItem,
+    SearchMetadata,
+    SearchResponse,
+    SearchRequest,
+    SearchCorrection,
+    SearchErrorResponse
+)
+from core.personalized_search import personalized_search_engine
 
 logger = structlog.get_logger()
 
@@ -41,46 +37,10 @@ router = APIRouter()
 facet_generator = FacetGenerator()
 
 
-class SearchRequest(BaseModel):
-    """Search request model"""
-    query: str
-    filters: Optional[Union[Dict[str, Any], List]] = None
-    limit: int = 20
-    offset: int = 0
-    search_mode: str = "keyword"  # "keyword", "semantic", "hybrid"
-    hybrid_weights: Optional[Dict[str, float]] = None  # Custom weights for hybrid search
-    
-    @validator('filters', pre=True)
-    def normalize_filters(cls, v):
-        """Convert filters array to dict if needed"""
-        if isinstance(v, list):
-            return {}
-        return v or {}
-    
-    @validator('search_mode')
-    def validate_search_mode(cls, v):
-        """Validate search mode"""
-        valid_modes = ["keyword", "semantic", "hybrid"]
-        if v not in valid_modes:
-            return "keyword"
-        return v
+# Use SearchRequest from schemas (API-first approach)
 
 
-class SearchResult(BaseModel):
-    """Search result model"""
-    product_id: str
-    title: str
-    score: float
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class SearchResponse(BaseModel):
-    """Search response model"""
-    results: List[SearchResult]
-    total: int
-    query: str
-    took: float
-    facets: Optional[Dict[str, Any]] = None  # Facets for filtering
+# Use SearchResultItem and SearchResponse from schemas (API-first approach)
 
 
 def _calibrate_semantic_scores_by_attributes(
@@ -516,8 +476,9 @@ async def _perform_semantic_search(
 
 @router.post("/")
 async def search_products(search_request: SearchRequest, request: Request):
-    """Product search with support for keyword, semantic, and hybrid modes."""
+    """Product search with personalization support using API-first architecture."""
     start_time = time.time()
+    personalization_start_time = None
     merchant_id = get_merchant_id(request)
     correlation_id = getattr(request.state, "correlation_id", "")
 
@@ -529,26 +490,29 @@ async def search_products(search_request: SearchRequest, request: Request):
         search_cache = getattr(request.app.state, "search_cache", None)
         embedding_service = getattr(request.app.state, "embedding_service", None)
         qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
-        
-        # Determine search mode
-        search_mode = search_request.search_mode
-        
-        # If hybrid/semantic requested but services not available, fallback to keyword
-        if search_mode in ["semantic", "hybrid"] and (not embedding_service or not qdrant_manager):
-            logger.warning("Semantic search requested but services not available, falling back to keyword")
+
+        # Initialize personalization metadata
+        personalization_applied = False
+        personalization_profile_used = False
+        personalization_processing_time = 0.0  # Initialize to avoid NameError
+        user_id_used = search_request.user_id
+        session_id_used = search_request.session_id
+
+        # Use hybrid search by default (best results)
+        # If semantic services not available, fallback to keyword
+        search_mode = "hybrid"
+        if not embedding_service or not qdrant_manager:
+            logger.warning("Semantic search services not available, falling back to keyword search")
             search_mode = "keyword"
-        
-        # Get hybrid weights
+
+        # Default hybrid weights
         keyword_weight = 0.7
         semantic_weight = 0.3
-        if search_request.hybrid_weights:
-            keyword_weight = search_request.hybrid_weights.get("keyword", 0.7)
-            semantic_weight = search_request.hybrid_weights.get("semantic", 0.3)
 
         # Extract query attributes for score calibration (Hybrid+ Scoring Tweaks)
         query_attributes = _extract_query_attributes(search_request.query)
-        
-        # Perform search based on mode
+
+        # Perform search based on available services
         facets_dict = None
         if search_mode == "keyword":
             result_data = await _perform_keyword_search(
@@ -622,37 +586,84 @@ async def search_products(search_request: SearchRequest, request: Request):
                 include_facets=True
             )
             facets_dict = keyword_result.get("facets")
-        
-        # Format results to SearchResult model
+
+        # Format results to SearchResultItem model
         formatted = []
         for r in results:
             formatted.append(
-                SearchResult(
-                    product_id=r["product_id"],
+                SearchResultItem(
+                    product_id=str(r["product_id"]),
                     title=r.get("name", r.get("title", "")),
-                    score=r.get("score", r.get("hybrid_score", 0.0)),
+                    score=r.get("hybrid_score", r.get("score", 0.0)),
                     metadata=r.get("metadata", {})
                 )
             )
+
+        # Apply personalization if enabled and user context provided
+        if (search_request.personalize and
+            (search_request.user_id or search_request.session_id)):
+            personalization_start_time = time.time()
+            try:
+                logger.info("Applying personalization",
+                          user_id=search_request.user_id,
+                          session_id=search_request.session_id,
+                          result_count=len(formatted))
+
+                # Apply personalized ranking
+                formatted = await personalized_search_engine.apply_personalized_ranking(
+                    formatted,
+                    user_id=search_request.user_id,
+                    session_id=search_request.session_id,
+                    user_context=search_request.user_context
+                )
+
+                personalization_applied = True
+                personalization_profile_used = len(formatted) > 0
+
+                personalization_processing_time = time.time() - personalization_start_time
+                logger.info("Personalization applied successfully",
+                          processing_time=personalization_processing_time,
+                          profile_used=personalization_profile_used)
+
+            except Exception as e:
+                logger.warning("Personalization failed, continuing with original results",
+                            error=str(e))
+                personalization_processing_time = time.time() - (personalization_start_time or time.time())
         
         took = time.time() - start_time
-        
+
+        # Create search metadata with personalization info
+        search_metadata = SearchMetadata(
+            nlp_enabled=True,  # Assuming NLP is enabled
+            semantic_search=(search_mode in ["semantic", "hybrid"]),
+            personalization_applied=personalization_applied,
+            user_id=user_id_used,
+            session_id=session_id_used,
+            personalization_profile_used=personalization_profile_used,
+            personalization_processing_time=personalization_processing_time or 0.0,
+            processing_time=took
+        )
+
+        # Create response using updated schema
         response = SearchResponse(
             results=formatted,
             total=total,
             query=search_request.query,
             took=took,
             facets=facets_dict,
+            search_metadata=search_metadata
         )
+
         response_dict = response.dict()
-        response_dict["search_metadata"] = {
+
+        # Add additional metadata for backward compatibility
+        response_dict["search_metadata"].update({
             "correlation_id": correlation_id,
             "cache_status": cache_status,
             "zero_results": total == 0,
             "merchant_id": merchant_id,
-            "search_mode": search_mode,
-        }
-        
+        })
+
         return response_dict
     except HTTPException:
         raise

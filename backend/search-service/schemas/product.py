@@ -85,14 +85,19 @@ class ProductData(BaseModel):
     status: int = Field(default=1, description="Product status (1=enabled, 2=disabled)")
     visibility: int = Field(default=4, description="Product visibility (1-4)")
     
-    # Store Context
-    store_id: Optional[int] = Field(default=None, description="Magento store ID")
-    website_id: Optional[int] = Field(default=None, description="Magento website ID")
+    # Platform-specific Context (Optional - for platform integrations)
+    store_id: Optional[Union[int, str]] = Field(default=None, description="Platform-specific store identifier")
+    website_id: Optional[Union[int, str]] = Field(default=None, description="Platform-specific website identifier")
     
     # Metadata
     version: Optional[int] = Field(default=1, description="Document version")
     created_at: Optional[str] = Field(default=None, description="Creation timestamp")
     updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
+    
+    @validator('id')
+    def validate_id(cls, v):
+        """Ensure ID is always a string"""
+        return str(v) if v is not None else v
     
     @validator('price', 'special_price', 'final_price')
     def validate_prices(cls, v):

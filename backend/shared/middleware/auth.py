@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from shared.auth.api_key_manager import APIKeyManager
-from shared.database.base import get_db
+from shared.database.base import AsyncSessionLocal
 
 logger = structlog.get_logger()
 
@@ -140,9 +140,10 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                        path=request.url.path,
                        key_prefix=key_prefix)
             
-            # Get database session
+            # Get database session (middleware optimization - create session directly)
             try:
-                async for db in get_db():
+                # Create session directly for middleware (more efficient than generator)
+                async with AsyncSessionLocal() as db:
                     try:
                         # Get Redis client from app state if available (for API key caching)
                         redis_client = None
@@ -151,11 +152,15 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                             # Different services store it differently
                             if hasattr(request.app.state, 'search_cache'):
                                 redis_client = request.app.state.search_cache.redis
+                                logger.debug("Using Redis client from search_cache")
                             elif hasattr(request.app.state, 'redis_client'):
                                 redis_client = request.app.state.redis_client
-                        except Exception:
-                            pass  # Redis client not available, continue without caching
-                        
+                                logger.debug("Using Redis client from redis_client")
+                            else:
+                                logger.debug("No Redis client found in app state")
+                        except Exception as e:
+                            logger.debug("Error getting Redis client", error=str(e))
+
                         api_key_manager = APIKeyManager(db, redis_client=redis_client)
                         merchant_context = await api_key_manager.validate_api_key(api_key)
                     except Exception as e:

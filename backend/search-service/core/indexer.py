@@ -119,9 +119,9 @@ class ProductIndexer:
             "status": int(product.get("status", 1)),
             "visibility": int(product.get("visibility", 4)),
             
-            # Store context
-            "store_id": int(product.get("store_id")) if product.get("store_id") is not None else None,
-            "website_id": int(product.get("website_id")) if product.get("website_id") is not None else None,
+            # Platform-specific context (store as string to support any platform format)
+            "store_id": str(product.get("store_id")) if product.get("store_id") is not None else None,
+            "website_id": str(product.get("website_id")) if product.get("website_id") is not None else None,
             
             # Metadata
             # Note: _version is a reserved Elasticsearch field, don't include it

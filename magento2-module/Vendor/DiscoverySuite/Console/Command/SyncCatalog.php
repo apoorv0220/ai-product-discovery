@@ -611,7 +611,7 @@ class SyncCatalog extends Command
             
                 // Format product data according to AI service expectations
             $productData = [
-                'id' => $product->getId(),
+                'id' => (string)$product->getId(),
                 'sku' => $product->getSku(),
                 'name' => $product->getName(),
                 'description' => $product->getDescription() ?: $product->getShortDescription(),
@@ -633,8 +633,8 @@ class SyncCatalog extends Command
                 'visibility' => $product->getVisibility(),
                 'created_at' => $product->getCreatedAt(),
                 'updated_at' => $product->getUpdatedAt(),
-                'store_id' => $store->getId(),
-                'website_id' => $store->getWebsiteId(),
+                'store_id' => (string)$store->getId(),
+                'website_id' => (string)$store->getWebsiteId(),
                 'avg_rating' => $this->getProductRating($product, $store),
                 'review_count' => $this->getProductReviewCount($product, $store)
             ];

@@ -66,8 +66,8 @@ PRODUCT_INDEX_MAPPING: Dict = {
         "in_stock": {"type": "boolean"},
         "stock_quantity": {"type": "integer"},
         "manage_stock": {"type": "boolean"},
-        "store_id": {"type": "integer"},
-        "website_id": {"type": "integer"},
+        "store_id": {"type": "keyword"},  # Platform-specific store identifier (string or int)
+        "website_id": {"type": "keyword"},  # Platform-specific website identifier (string or int)
         "avg_rating": {"type": "float"},
         "review_count": {"type": "integer"},
         "attributes": {"type": "object", "enabled": False},

@@ -130,6 +130,15 @@ async def lifespan(app: FastAPI):
         # Initialize database
         await init_database()
         logger.info("Database initialized")
+
+        # Initialize personalization database tables
+        try:
+            from database.init_personalization import init_personalization_db
+            await init_personalization_db()
+            logger.info("Personalization database initialized")
+        except Exception as e:
+            logger.warning("Failed to initialize personalization database", error=str(e))
+            # Continue startup - personalization will be disabled
         
         # Initialize Elasticsearch
         es_manager = ElasticsearchManager()
@@ -139,8 +148,10 @@ async def lifespan(app: FastAPI):
         
         # Initialize Redis cache for search
         try:
+            from shared.config.settings import get_settings
+            redis_settings = get_settings()
             redis_client = await redis_async.from_url(
-                settings.REDIS_URL,
+                redis_settings.REDIS_URL,
                 encoding="utf-8",
                 decode_responses=True,
             )
@@ -157,10 +168,12 @@ async def lifespan(app: FastAPI):
         
         # Initialize Embedding Service
         try:
-            embedding_service = EmbeddingService()
+            from shared.config.settings import get_settings
+            settings = get_settings()
+            embedding_service = EmbeddingService(model_name=settings.EMBEDDING_MODEL)
             await embedding_service.initialize()
             app.state.embedding_service = embedding_service
-            logger.info("Embedding service initialized")
+            logger.info("Embedding service initialized", model=settings.EMBEDDING_MODEL)
         except Exception as e:
             logger.warning("Failed to initialize embedding service", error=str(e))
             # Continue without embeddings - semantic search will be disabled
@@ -226,33 +239,34 @@ app = FastAPI(
     title="AI Product Discovery Suite - Search Service",
     description="""
     **Advanced AI-Powered Search Service**
-    
+
     ## 🚀 Key Features
     - **OpenAI Integration**: Semantic understanding and intelligent typo correction
     - **Natural Language Processing**: Understands queries like "I want comfortable hoodies"
-    - **Smart Typo Correction**: Automatically fixes "Hro Hoodie" → "Hero Hoodie" 
+    - **Smart Typo Correction**: Automatically fixes "Hro Hoodie" → "Hero Hoodie"
     - **Intent Recognition**: Detects buy, compare, browse, and specific search intents
     - **Real-time Autocomplete**: Instant suggestions with rich product metadata
-    - **Magento Integration**: Perfect synchronization with Magento frontend
-    
+    - **Platform Agnostic**: Works with any e-commerce platform
+
     ## 🔌 Main Endpoints
     - **GET/POST** `/api/v1/autocomplete/` - Get AI-enhanced autocomplete suggestions
     - **POST** `/api/v1/search/` - Perform semantic product search with NLP
     - **POST** `/api/v1/index/products` - Index products for intelligent search
     - **GET** `/health` - Service health and status check
-    
+
     ## 📊 Response Format
     All APIs return standardized JSON with comprehensive AI enhancement metadata:
     - Typo correction indicators and confidence scores
-    - Search intent detection results  
+    - Search intent detection results
     - Semantic processing information
     - Performance metrics and timing data
-    
+
     ## 🎯 AI Capabilities
     - **Typo Tolerance**: Handles any misspelling using OpenAI
     - **Semantic Search**: Extracts meaning from natural language
     - **Intent Detection**: Understands user purchase intent
     - **Fallback Protection**: Graceful degradation if AI services unavailable
+    - **Personalization**: Optional user behavior-based ranking
     """,
     version="2.0.0",
     docs_url="/docs",
@@ -314,7 +328,9 @@ app.add_middleware(
     APIKeyAuthMiddleware,
     exempt_paths={
         "/", "/health", "/health/", "/metrics", "/metrics/",
-        "/docs", "/docs/", "/redoc", "/redoc/", "/openapi.json", "/favicon.ico"
+        "/docs", "/docs/", "/redoc", "/redoc/", "/openapi.json", "/favicon.ico",
+        # Only tracking health check is exempt (no sensitive data)
+        "/api/v1/tracking/health"
     }
 )
 
@@ -349,7 +365,9 @@ app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(semantic_search.router, prefix="/api/v1/search/semantic", tags=["search"])
 app.include_router(autocomplete.router, prefix="/api/v1/autocomplete", tags=["autocomplete"])
 app.include_router(index.router, prefix="/api/v1/index", tags=["indexing"])
-# tracking endpoints are temporarily disabled until personalization models are wired
+# Include tracking router for personalization
+from api import tracking
+app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 
 
 @app.get("/")
