@@ -38,9 +38,25 @@ def print_info(message):
 
 def run_migrations():
     """Run all migration files"""
-    # Database connection parameters
-    host = os.getenv('POSTGRES_HOST', 'localhost')
-    port = os.getenv('POSTGRES_PORT', '7010')
+    # Detect if running inside Docker container
+    # Check for common container indicators
+    in_container = (
+        os.path.exists('/.dockerenv') or  # Docker container marker
+        os.getenv('DOCKER_CONTAINER') == 'true' or  # Explicit env var
+        os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_')  # Container naming pattern
+    )
+
+    if in_container:
+        # Running inside Docker container - use container network
+        host = os.getenv('POSTGRES_HOST', 'postgres')  # Container name
+        port = os.getenv('POSTGRES_PORT', '5432')      # Internal port
+        print_info("Detected: Running inside Docker container")
+    else:
+        # Running on host machine
+        host = os.getenv('POSTGRES_HOST', 'localhost')
+        port = os.getenv('POSTGRES_PORT', '7010')      # External port
+        print_info("Detected: Running on host machine")
+
     database = os.getenv('POSTGRES_DB', 'ai_discovery')
     user = os.getenv('POSTGRES_USER', 'ai_user')
     password = os.getenv('POSTGRES_PASSWORD', 'ai_password')

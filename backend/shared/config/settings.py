@@ -11,6 +11,7 @@ AI Product Discovery Suite - Shared Settings
 import os
 import socket
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional, List
 from pydantic_settings import BaseSettings
 
@@ -45,19 +46,29 @@ class Settings(BaseSettings):
 
     def _configure_database(self):
         """Configure database connection based on environment"""
-        environment = os.getenv('ENVIRONMENT', 'development')
+        if self._db_configured:
+            return
 
-        if environment == 'production':
-            # Production: Use internal Docker network names
-            default_db_url = "postgresql+asyncpg://ai_user:ai_password_2024@postgres:5432/ai_discovery"
+        # Detect if running inside Docker container
+        in_container = (
+            Path('/.dockerenv').exists() or  # Docker container marker
+            os.getenv('DOCKER_CONTAINER') == 'true' or  # Explicit env var
+            os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_')  # Container naming pattern
+        )
+
+        if in_container:
+            # Running inside Docker container - use container network
+            db_host = os.getenv('POSTGRES_HOST', 'postgres')  # Container name
+            db_port = os.getenv('POSTGRES_PORT', '5432')      # Internal port
         else:
-            # Development: Use external mapped ports
+            # Running on host machine
             db_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST', 'localhost'))
             db_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '7010'))
-            db_name = os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'ai_discovery'))
-            db_user = os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'ai_user'))
-            db_password = os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD', 'ai_password'))
-            default_db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+        db_name = os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'ai_discovery'))
+        db_user = os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'ai_user'))
+        db_password = os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD', 'ai_password'))
+        default_db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
         self.DATABASE_URL = os.getenv('DATABASE_URL', default_db_url)
         self._db_configured = True

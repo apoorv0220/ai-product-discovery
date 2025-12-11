@@ -11,8 +11,41 @@ import os
 import time
 from typing import Dict, List, Any
 
-# Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+# Dynamic path setup for both dev and production environments
+def setup_paths():
+    """Set up Python paths for both development and production environments"""
+    script_dir = Path(__file__).parent
+    project_root = script_dir.parent
+
+    # Check if we're in a Docker container (production) or local dev
+    if (script_dir / "shared").exists():
+        # Local development: script is in project_root/scripts/, backend/ exists
+        sys.path.insert(0, str(project_root))
+    else:
+        # Production Docker: script is in service container, need to find shared modules
+        possible_paths = [
+            project_root,  # If mounted as volume
+            Path("/app"),  # Common Docker mount point
+            Path("/opt/app"),  # Alternative mount point
+        ]
+
+        for path in possible_paths:
+            shared_path = path / "shared"
+            if shared_path.exists():
+                sys.path.insert(0, str(path))
+                break
+        else:
+            # Fallback: try to find shared relative to current location
+            current_dir = Path.cwd()
+            for parent in [current_dir] + list(current_dir.parents):
+                if (parent / "shared").exists():
+                    sys.path.insert(0, str(parent))
+                    break
+            else:
+                raise RuntimeError("Could not find shared modules. Check environment setup.")
+
+# Setup paths before other imports
+setup_paths()
 
 import httpx
 
