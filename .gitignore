@@ -323,7 +323,6 @@ $RECYCLE.BIN/
 *.pth
 *.onnx
 *.pb
-models/
 checkpoints/
 data/
 datasets/
