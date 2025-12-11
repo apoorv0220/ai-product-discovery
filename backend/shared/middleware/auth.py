@@ -160,7 +160,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                                 logger.debug("No Redis client found in app state")
                         except Exception as e:
                             logger.debug("Error getting Redis client", error=str(e))
-
+                        
                         api_key_manager = APIKeyManager(db, redis_client=redis_client)
                         merchant_context = await api_key_manager.validate_api_key(api_key)
                     except Exception as e:

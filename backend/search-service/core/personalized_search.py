@@ -15,12 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import sessionmaker
 
-import sys
-import os
-# Add backend directory to path for models import
-backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, backend_dir)
-from models.user_interactions import (
+from ..models.user_interactions import (
     UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
 )
 from core.database import get_async_session

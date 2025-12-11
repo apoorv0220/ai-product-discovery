@@ -511,7 +511,7 @@ async def search_products(search_request: SearchRequest, request: Request):
 
         # Extract query attributes for score calibration (Hybrid+ Scoring Tweaks)
         query_attributes = _extract_query_attributes(search_request.query)
-
+        
         # Perform search based on available services
         facets_dict = None
         if search_mode == "keyword":

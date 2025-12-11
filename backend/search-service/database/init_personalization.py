@@ -10,10 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine
 import logging
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from models.user_interactions import Base
+from ..models.user_interactions import Base
 from core.database import get_database_url
 
 logging.basicConfig(level=logging.INFO)
