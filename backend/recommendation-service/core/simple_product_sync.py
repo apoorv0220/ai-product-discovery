@@ -11,7 +11,8 @@ import structlog
 from datetime import datetime
 
 from shared.database.base import get_database_session
-from sqlalchemy import text, select
+from sqlalchemy import select, delete, func
+from shared.models import Product
 
 logger = structlog.get_logger()
 
@@ -82,33 +83,18 @@ class SimpleProductSync:
             session = await session_generator.__anext__()
             
             try:
-                # Clear existing products
-                await session.execute(text("DELETE FROM products"))
+                # Clear existing products using ORM
+                await session.execute(delete(Product))
                 
-                # Insert new products
+                # Insert new products using ORM
                 for product_id, product_data in products_data.items():
                     try:
                         # Extract and clean product data
                         product_info = self._extract_product_info(product_id, product_data)
                         
-                        # Insert using raw SQL to avoid relationship issues
-                        insert_sql = text("""
-                            INSERT INTO products (
-                                magento_product_id, store_id, sku, name, description, short_description, 
-                                price, special_price, status, visibility,
-                                category_ids, qty, is_in_stock, image_url,
-                                view_count, purchase_count, avg_rating, review_count,
-                                created_at, updated_at, last_synced_at
-                            ) VALUES (
-                                :magento_product_id, :store_id, :sku, :name, :description, :short_description,
-                                :price, :special_price, :status, :visibility,
-                                :category_ids, :qty, :is_in_stock, :image_url,
-                                :view_count, :purchase_count, :avg_rating, :review_count,
-                                :created_at, :updated_at, :last_synced_at
-                            )
-                        """)
-                        
-                        await session.execute(insert_sql, product_info)
+                        # Create Product instance using ORM
+                        product = Product(**product_info)
+                        session.add(product)
                         synced_count += 1
                         
                     except Exception as e:
@@ -195,9 +181,9 @@ class SimpleProductSync:
             session = await session_generator.__anext__()
             
             try:
-                # Count products in database
-                result = await session.execute(text("SELECT COUNT(*) FROM products"))
-                db_count = result.scalar()
+                # Count products in database using ORM
+                result = await session.execute(select(func.count(Product.id)))
+                db_count = result.scalar_one()
                 
                 # Count products in search index
                 search_products = self._load_products_from_index()

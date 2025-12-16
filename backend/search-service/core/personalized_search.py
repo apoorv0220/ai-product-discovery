@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import sessionmaker
 
-from models.user_interactions import (
+from shared.models import (
     UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
 )
 from core.database import get_async_session

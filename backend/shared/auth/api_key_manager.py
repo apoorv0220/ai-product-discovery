@@ -20,6 +20,8 @@ from sqlalchemy import select, update, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
+from shared.models import Merchant, APIKey, APIKeyUsage
+
 logger = structlog.get_logger()
 
 
@@ -154,15 +156,11 @@ class APIKeyManager:
         """
         # Get merchant tier if not specified
         if tier is None:
-            from sqlalchemy import text
             result = await self.db.execute(
-                text("SELECT tier FROM merchants WHERE id = :merchant_id"),
-                {"merchant_id": merchant_id}
+                select(Merchant.tier).where(Merchant.id == merchant_id)
             )
-            row = result.fetchone()
-            if row:
-                tier = row[0]
-            else:
+            tier = result.scalar_one_or_none()
+            if tier is None:
                 raise ValueError(f"Merchant {merchant_id} not found")
         
         # Generate API key
@@ -182,46 +180,36 @@ class APIKeyManager:
         if expires_in_days:
             expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
         
-        # Insert into database
-        from sqlalchemy import text
-        insert_query = text("""
-            INSERT INTO api_keys (
-                merchant_id, key_hash, key_prefix, name, description,
-                rate_limit_per_minute, status, scopes, expires_at, created_by
-            ) VALUES (
-                :merchant_id, :key_hash, :key_prefix, :name, :description,
-                :rate_limit, 'active', :scopes, :expires_at, :created_by
-            )
-            RETURNING id, merchant_id, key_prefix, name, rate_limit_per_minute, 
-                      status, scopes, created_at, expires_at
-        """)
-        
-        result = await self.db.execute(insert_query, {
-            "merchant_id": merchant_id,
-            "key_hash": key_hash,
-            "key_prefix": key_prefix,
-            "name": name,
-            "description": description,
-            "rate_limit": rate_limit,
-            "scopes": json.dumps(scopes),  # Store as JSON text
-            "expires_at": expires_at,
-            "created_by": created_by
-        })
-        
-        row = result.fetchone()
+        # Insert into database via ORM
+        api_key_obj = APIKey(
+            merchant_id=merchant_id,
+            key_hash=key_hash,
+            key_prefix=key_prefix,
+            name=name,
+            description=description,
+            rate_limit_per_minute=rate_limit,
+            status="active",
+            scopes=scopes,
+            expires_at=expires_at,
+            created_by=created_by,
+        )
+
+        self.db.add(api_key_obj)
+        await self.db.flush()
+        await self.db.refresh(api_key_obj)
         await self.db.commit()
         
         # Prepare response
         key_record = {
-            "id": row[0],
-            "merchant_id": row[1],
-            "key_prefix": row[2],
-            "name": row[3],
-            "rate_limit_per_minute": row[4],
-            "status": row[5],
-            "scopes": row[6],
-            "created_at": row[7],
-            "expires_at": row[8]
+            "id": api_key_obj.id,
+            "merchant_id": api_key_obj.merchant_id,
+            "key_prefix": api_key_obj.key_prefix,
+            "name": api_key_obj.name,
+            "rate_limit_per_minute": api_key_obj.rate_limit_per_minute,
+            "status": api_key_obj.status,
+            "scopes": api_key_obj.scopes,
+            "created_at": api_key_obj.created_at,
+            "expires_at": api_key_obj.expires_at,
         }
         
         logger.info("API key created",
@@ -269,20 +257,31 @@ class APIKeyManager:
             
             # Cache miss or no Redis - query database
             db_start = time.time()
-            from sqlalchemy import text
-            query = text("""
-                SELECT ak.id, ak.merchant_id, ak.key_hash, ak.name,
-                       ak.rate_limit_per_minute, ak.status, ak.scopes,
-                       ak.expires_at, m.name as merchant_name, m.tier, m.status as merchant_status
-                FROM api_keys ak
-                JOIN merchants m ON ak.merchant_id = m.id
-                WHERE ak.key_prefix = :key_prefix
-                  AND ak.status = 'active'
-                  AND m.status = 'active'
-                  AND (ak.expires_at IS NULL OR ak.expires_at > CURRENT_TIMESTAMP)
-            """)
+
+            stmt = (
+                select(
+                    APIKey.id,
+                    APIKey.merchant_id,
+                    APIKey.key_hash,
+                    APIKey.name,
+                    APIKey.rate_limit_per_minute,
+                    APIKey.status,
+                    APIKey.scopes,
+                    APIKey.expires_at,
+                    Merchant.name.label("merchant_name"),
+                    Merchant.tier,
+                    Merchant.status.label("merchant_status"),
+                )
+                .join(Merchant, APIKey.merchant_id == Merchant.id)
+                .where(
+                    APIKey.key_prefix == key_prefix,
+                    APIKey.status == "active",
+                    Merchant.status == "active",
+                    func.coalesce(APIKey.expires_at > func.now(), True),
+                )
+            )
             
-            result = await self.db.execute(query, {"key_prefix": key_prefix})
+            result = await self.db.execute(stmt)
             rows = result.fetchall()
             db_query_duration = time.time() - db_start
             
@@ -294,30 +293,31 @@ class APIKeyManager:
             # Try to verify against each potential match
             for row in rows:
                 verify_start = time.time()
-                if self.verify_key(api_key, row[2]):  # row[2] is key_hash
+                if self.verify_key(api_key, row.key_hash):
                     verify_duration = time.time() - verify_start
                     total_duration = time.time() - start_time
                     
                     # Update last used timestamp (async, don't block)
-                    update_query = text("""
-                        UPDATE api_keys 
-                        SET last_used_at = CURRENT_TIMESTAMP,
-                            usage_count = usage_count + 1
-                        WHERE id = :key_id
-                    """)
-                    await self.db.execute(update_query, {"key_id": row[0]})
+                    await self.db.execute(
+                        update(APIKey)
+                        .where(APIKey.id == row.id)
+                        .values(
+                            last_used_at=func.now(),
+                            usage_count=APIKey.usage_count + 1,
+                        )
+                    )
                     await self.db.commit()
                     
                     # Return merchant context
                     context = {
-                        "api_key_id": row[0],
-                        "merchant_id": row[1],
-                        "merchant_name": row[8],
-                        "merchant_tier": row[9],
-                        "merchant_status": row[10],
-                        "key_name": row[3],
-                        "rate_limit_per_minute": row[4],
-                        "scopes": row[6]
+                        "api_key_id": row.id,
+                        "merchant_id": row.merchant_id,
+                        "merchant_name": row.merchant_name,
+                        "merchant_tier": row.tier,
+                        "merchant_status": row.merchant_status,
+                        "key_name": row.name,
+                        "rate_limit_per_minute": row.rate_limit_per_minute,
+                        "scopes": row.scopes,
                     }
                     
                     # Cache the result
@@ -392,22 +392,17 @@ class APIKeyManager:
             True if successful
         """
         try:
-            from sqlalchemy import text
-            query = text("""
-                UPDATE api_keys
-                SET status = 'revoked',
-                    revoked_at = CURRENT_TIMESTAMP,
-                    revoked_by = :revoked_by,
-                    revoked_reason = :reason
-                WHERE id = :key_id
-                RETURNING merchant_id, key_prefix
-            """)
-            
-            result = await self.db.execute(query, {
-                "key_id": key_id,
-                "revoked_by": revoked_by,
-                "reason": reason
-            })
+            result = await self.db.execute(
+                update(APIKey)
+                .where(APIKey.id == key_id)
+                .values(
+                    status="revoked",
+                    revoked_at=func.now(),
+                    revoked_by=revoked_by,
+                    revoked_reason=reason,
+                )
+                .returning(APIKey.merchant_id, APIKey.key_prefix)
+            )
             
             row = result.fetchone()
             await self.db.commit()
@@ -415,8 +410,8 @@ class APIKeyManager:
             if row:
                 logger.info("API key revoked",
                            key_id=key_id,
-                           merchant_id=row[0],
-                           key_prefix=row[1],
+                           merchant_id=row.merchant_id,
+                           key_prefix=row.key_prefix,
                            reason=reason)
                 return True
             
@@ -443,41 +438,34 @@ class APIKeyManager:
             List of API key records
         """
         try:
-            from sqlalchemy import text
+            stmt = select(APIKey).where(APIKey.merchant_id == merchant_id)
+            if not include_revoked:
+                stmt = stmt.where(APIKey.status != "revoked")
+            stmt = stmt.order_by(APIKey.created_at.desc())
             
-            status_filter = "" if include_revoked else "AND status != 'revoked'"
+            result = await self.db.execute(stmt)
+            rows = result.scalars().all()
             
-            query = text(f"""
-                SELECT id, merchant_id, key_prefix, name, description, rate_limit_per_minute,
-                       status, scopes, last_used_at, usage_count, created_at,
-                       expires_at, revoked_at, revoked_reason
-                FROM api_keys
-                WHERE merchant_id = :merchant_id
-                {status_filter}
-                ORDER BY created_at DESC
-            """)
-            
-            result = await self.db.execute(query, {"merchant_id": merchant_id})
-            rows = result.fetchall()
-            
-            keys = []
-            for row in rows:
-                keys.append({
-                    "id": row[0],
-                    "merchant_id": row[1],
-                    "key_prefix": row[2],
-                    "name": row[3],
-                    "description": row[4],
-                    "rate_limit_per_minute": row[5],
-                    "status": row[6],
-                    "scopes": row[7],
-                    "last_used_at": row[8],
-                    "usage_count": row[9],
-                    "created_at": row[10],
-                    "expires_at": row[11],
-                    "revoked_at": row[12],
-                    "revoked_reason": row[13]
-                })
+            keys: List[Dict[str, Any]] = []
+            for key in rows:
+                keys.append(
+                    {
+                        "id": key.id,
+                        "merchant_id": key.merchant_id,
+                        "key_prefix": key.key_prefix,
+                        "name": key.name,
+                        "description": key.description,
+                        "rate_limit_per_minute": key.rate_limit_per_minute,
+                        "status": key.status,
+                        "scopes": key.scopes,
+                        "last_used_at": key.last_used_at,
+                        "usage_count": key.usage_count,
+                        "created_at": key.created_at,
+                        "expires_at": key.expires_at,
+                        "revoked_at": key.revoked_at,
+                        "revoked_reason": key.revoked_reason,
+                    }
+                )
             
             return keys
             
@@ -501,21 +489,31 @@ class APIKeyManager:
             Dictionary with usage statistics
         """
         try:
-            from sqlalchemy import text
+            cutoff = datetime.utcnow() - timedelta(days=days)
+
+            stmt = (
+                select(
+                    func.count(APIKeyUsage.id),
+                    func.count(func.distinct(func.date(APIKeyUsage.timestamp))),
+                    func.avg(APIKeyUsage.response_time_ms),
+                    func.count(
+                        func.nullif(
+                            func.case(
+                                (APIKeyUsage.status_code >= 400, 1),
+                                else_=0,
+                            ),
+                            0,
+                        )
+                    ),
+                    func.max(APIKeyUsage.timestamp),
+                )
+                .where(
+                    APIKeyUsage.api_key_id == key_id,
+                    APIKeyUsage.timestamp > cutoff,
+                )
+            )
             
-            query = text("""
-                SELECT 
-                    COUNT(*) as total_requests,
-                    COUNT(DISTINCT DATE(timestamp)) as active_days,
-                    AVG(response_time_ms) as avg_response_time,
-                    COUNT(CASE WHEN status_code >= 400 THEN 1 END) as error_count,
-                    MAX(timestamp) as last_request
-                FROM api_key_usage
-                WHERE api_key_id = :key_id
-                  AND timestamp > CURRENT_TIMESTAMP - INTERVAL ':days days'
-            """)
-            
-            result = await self.db.execute(query, {"key_id": key_id, "days": days})
+            result = await self.db.execute(stmt)
             row = result.fetchone()
             
             if row:
@@ -525,7 +523,7 @@ class APIKeyManager:
                     "avg_response_time_ms": float(row[2]) if row[2] else 0,
                     "error_count": row[3] or 0,
                     "last_request": row[4],
-                    "period_days": days
+                    "period_days": days,
                 }
             
             return {
@@ -534,7 +532,7 @@ class APIKeyManager:
                 "avg_response_time_ms": 0,
                 "error_count": 0,
                 "last_request": None,
-                "period_days": days
+                "period_days": days,
             }
             
         except Exception as e:

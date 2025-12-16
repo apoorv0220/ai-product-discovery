@@ -82,31 +82,34 @@ class RecommendationEngine:
     async def _basic_similar_products_fallback(self, product_id: str, limit: int) -> List[Dict[str, Any]]:
         """Basic fallback for similar products"""
         try:
-            from shared.database.base import SessionLocal
-            from sqlalchemy import text
+            from shared.models.product import Product
+            from shared.database.base import get_database_session
+            from sqlalchemy import select, and_, func
             
-            session = SessionLocal()
-            
-            try:
+            async with get_database_session() as session:
                 # Simple query to get products excluding the reference
-                query = text("""
-                    SELECT magento_product_id as id, name, price, view_count
-                    FROM products 
-                    WHERE magento_product_id != :product_id 
-                    AND status = 1 AND visibility IN (2, 3, 4)
-                    ORDER BY RANDOM()
-                    LIMIT :limit
-                """)
+                query = (
+                    select(Product)
+                    .where(
+                        and_(
+                            Product.magento_product_id != int(product_id),
+                            Product.status == 1,
+                            Product.visibility.in_([2, 3, 4])
+                        )
+                    )
+                    .order_by(func.random())
+                    .limit(limit)
+                )
                 
-                result = session.execute(query, {"product_id": int(product_id), "limit": limit})
-                products = result.fetchall()
+                result = await session.execute(query)
+                products = result.scalars().all()
                 
                 recommendations = []
                 for i, product in enumerate(products):
                     score = max(0.1, 0.5 - (i * 0.03))
                     
                     recommendations.append({
-                        "product_id": str(product.id),
+                        "product_id": str(product.magento_product_id),
                         "score": score,
                         "similarity_score": score,
                         "reason": "Similar product",
@@ -122,9 +125,6 @@ class RecommendationEngine:
                     })
                 
                 return recommendations
-                
-            finally:
-                session.close()
                 
         except Exception as e:
             logger.error("Error in similar products fallback", error=str(e))
@@ -496,27 +496,32 @@ class RecommendationEngine:
             session = await session_generator.__anext__()
             
             try:
-                # Build base query for available products using raw SQL
-                from sqlalchemy import text
+                # Build base query for available products using ORM
+                from shared.models.product import Product
                 
-                base_query = text("""
-                    SELECT magento_product_id as id, name, price, avg_rating, view_count, category_ids
-                    FROM products 
-                    WHERE status = 1 AND visibility IN (2, 3, 4)
-                    ORDER BY 
-                        COALESCE(avg_rating, 0) * 0.4 + COALESCE(view_count, 0) * 0.0001 DESC,
-                        updated_at DESC,
-                        view_count DESC
-                    LIMIT :limit
-                """)
+                base_query = (
+                    select(Product)
+                    .where(
+                        and_(
+                            Product.status == 1,
+                            Product.visibility.in_([2, 3, 4])
+                        )
+                    )
+                    .order_by(
+                        (func.coalesce(Product.avg_rating, 0) * 0.4 + func.coalesce(Product.view_count, 0) * 0.0001).desc(),
+                        Product.updated_at.desc(),
+                        Product.view_count.desc()
+                    )
+                    .limit(limit)
+                )
                 
-                result = await session.execute(base_query, {"limit": limit})
-                products = result.fetchall()
+                result = await session.execute(base_query)
+                products = result.scalars().all()
                 
                 recommendations = []
                 for i, product in enumerate(products):
                     # Calculate hybrid score based on multiple factors
-                    rating_score = (product.avg_rating or 0) / 5.0 if product.avg_rating else 0.0
+                    rating_score = (float(product.avg_rating) if product.avg_rating else 0) / 5.0
                     popularity_score = min(1.0, (product.view_count or 0) / 1000.0)
                     recency_score = 0.8  # All products get a good recency score for now
                     
@@ -524,7 +529,7 @@ class RecommendationEngine:
                     final_score = max(0.1, hybrid_score - (i * 0.05))  # Position penalty
                     
                     recommendations.append({
-                        "product_id": str(product.id),
+                        "product_id": str(product.magento_product_id),
                         "score": final_score,
                         "reason": f"Recommended based on popularity and quality",
                         "metadata": {

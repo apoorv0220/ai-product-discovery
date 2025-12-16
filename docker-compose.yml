@@ -12,7 +12,8 @@ services:
       - "7010:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      # Note: Database schema is now managed by Alembic migrations
+      # Run 'alembic upgrade head' after starting the postgres container
     restart: unless-stopped
     networks:
       - ai-discovery

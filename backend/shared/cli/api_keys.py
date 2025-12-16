@@ -26,12 +26,14 @@ from tabulate import tabulate
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import select, func, and_, case
 
 from shared.config.settings import get_settings
 from shared.auth.api_key_manager import APIKeyManager
+from shared.models import Merchant, APIKey, APIKeyUsage
 
 settings = get_settings()
 
@@ -72,30 +74,27 @@ class APIKeyCLI:
             Merchant ID
         """
         async with self.session_factory() as session:
-            query = text("""
-                INSERT INTO merchants (name, email, company_name, tier, status)
-                VALUES (:name, :email, :company_name, :tier, 'active')
-                RETURNING id, name, email, tier, created_at
-            """)
+            merchant = Merchant(
+                name=name,
+                email=email,
+                company_name=company_name or name,
+                tier=tier,
+                status="active"
+            )
             
-            result = await session.execute(query, {
-                "name": name,
-                "email": email,
-                "company_name": company_name or name,
-                "tier": tier
-            })
-            
-            row = result.fetchone()
+            session.add(merchant)
+            await session.flush()
+            await session.refresh(merchant)
             await session.commit()
             
             print(f"\n✓ Merchant created successfully!")
-            print(f"  ID: {row[0]}")
-            print(f"  Name: {row[1]}")
-            print(f"  Email: {row[2]}")
-            print(f"  Tier: {row[3]}")
-            print(f"  Created: {row[4]}")
+            print(f"  ID: {merchant.id}")
+            print(f"  Name: {merchant.name}")
+            print(f"  Email: {merchant.email}")
+            print(f"  Tier: {merchant.tier}")
+            print(f"  Created: {merchant.created_at}")
             
-            return row[0]
+            return merchant.id
     
     async def create_api_key(
         self,
@@ -203,63 +202,63 @@ class APIKeyCLI:
         """
         async with self.session_factory() as session:
             # Get merchant info
-            query = text("""
-                SELECT name, email, tier, status, created_at
-                FROM merchants
-                WHERE id = :merchant_id
-            """)
-            result = await session.execute(query, {"merchant_id": merchant_id})
-            merchant = result.fetchone()
+            result = await session.execute(
+                select(Merchant).where(Merchant.id == merchant_id)
+            )
+            merchant = result.scalar_one_or_none()
             
             if not merchant:
                 print(f"\n✗ Merchant {merchant_id} not found")
                 return
             
             # Get key stats
-            query = text("""
-                SELECT 
-                    COUNT(*) as total_keys,
-                    COUNT(CASE WHEN status = 'active' THEN 1 END) as active_keys,
-                    COUNT(CASE WHEN status = 'revoked' THEN 1 END) as revoked_keys,
-                    SUM(usage_count) as total_requests
-                FROM api_keys
-                WHERE merchant_id = :merchant_id
-            """)
-            result = await session.execute(query, {"merchant_id": merchant_id})
-            stats = result.fetchone()
+            key_stats = await session.execute(
+                select(
+                    func.count(APIKey.id).label("total_keys"),
+                    func.sum(case((APIKey.status == "active", 1), else_=0)).label("active_keys"),
+                    func.sum(case((APIKey.status == "revoked", 1), else_=0)).label("revoked_keys"),
+                    func.sum(APIKey.usage_count).label("total_requests")
+                ).where(APIKey.merchant_id == merchant_id)
+            )
+            stats = key_stats.fetchone()
             
-            # Get recent usage
-            query = text("""
-                SELECT 
-                    COUNT(*) as requests_24h,
-                    AVG(response_time_ms) as avg_response_time,
-                    COUNT(CASE WHEN status_code >= 400 THEN 1 END) as errors_24h
-                FROM api_key_usage
-                WHERE merchant_id = :merchant_id
-                  AND timestamp > CURRENT_TIMESTAMP - INTERVAL '24 hours'
-            """)
-            result = await session.execute(query, {"merchant_id": merchant_id})
-            usage = result.fetchone()
+            # Get recent usage (last 24 hours)
+            from datetime import datetime, timedelta
+            cutoff_time = datetime.utcnow() - timedelta(hours=24)
+            
+            usage_stats = await session.execute(
+                select(
+                    func.count(APIKeyUsage.id).label("requests_24h"),
+                    func.avg(APIKeyUsage.response_time_ms).label("avg_response_time"),
+                    func.sum(case((APIKeyUsage.status_code >= 400, 1), else_=0)).label("errors_24h")
+                ).where(
+                    and_(
+                        APIKeyUsage.merchant_id == merchant_id,
+                        APIKeyUsage.timestamp > cutoff_time
+                    )
+                )
+            )
+            usage = usage_stats.fetchone()
             
             print(f"\n{'='*60}")
-            print(f"Merchant Statistics: {merchant[0]}")
+            print(f"Merchant Statistics: {merchant.name}")
             print(f"{'='*60}")
             print(f"\nMerchant Info:")
-            print(f"  Email: {merchant[1]}")
-            print(f"  Tier: {merchant[2]}")
-            print(f"  Status: {merchant[3]}")
-            print(f"  Created: {merchant[4].strftime('%Y-%m-%d')}")
+            print(f"  Email: {merchant.email}")
+            print(f"  Tier: {merchant.tier}")
+            print(f"  Status: {merchant.status}")
+            print(f"  Created: {merchant.created_at.strftime('%Y-%m-%d')}")
             
             print(f"\nAPI Keys:")
-            print(f"  Total Keys: {stats[0] or 0}")
-            print(f"  Active Keys: {stats[1] or 0}")
-            print(f"  Revoked Keys: {stats[2] or 0}")
+            print(f"  Total Keys: {stats.total_keys or 0}")
+            print(f"  Active Keys: {stats.active_keys or 0}")
+            print(f"  Revoked Keys: {stats.revoked_keys or 0}")
             
             print(f"\nUsage:")
-            print(f"  Total Requests (All Time): {stats[3] or 0}")
-            print(f"  Requests (Last 24h): {usage[0] or 0}")
-            print(f"  Avg Response Time: {int(usage[1] or 0)} ms")
-            print(f"  Errors (Last 24h): {usage[2] or 0}")
+            print(f"  Total Requests (All Time): {stats.total_requests or 0}")
+            print(f"  Requests (Last 24h): {usage.requests_24h or 0}")
+            print(f"  Avg Response Time: {int(usage.avg_response_time or 0)} ms")
+            print(f"  Errors (Last 24h): {usage.errors_24h or 0}")
             print(f"\n{'='*60}\n")
     
     async def close(self):

@@ -46,7 +46,7 @@ class Settings(BaseSettings):
 
     def _configure_database(self):
         """Configure database connection based on environment"""
-        if self._db_configured:
+        if hasattr(self, '_db_configured') and self._db_configured:
             return
 
         # Detect if running inside Docker container

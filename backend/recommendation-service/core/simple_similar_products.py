@@ -1,100 +1,112 @@
 """
-Simple Similar Products Implementation
-Works around the async session manager issues
+Simple Similar Products Implementation using ORM.
+
+Uses the shared Product model and a synchronous Session for compatibility
+with existing recommendation engine code.
 """
 
 import structlog
-from typing import List, Dict, Any
-from sqlalchemy import text
+from typing import Any, Dict, List
+
+from sqlalchemy import select, and_, func
+
+from shared.database.base import SessionLocal
+from shared.models import Product
 
 logger = structlog.get_logger()
 
+
 def get_similar_products_simple(product_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
-    Get similar products using direct database query
+    Get similar products using ORM queries against the products table.
     """
     try:
-        from shared.database.base import SessionLocal
-        
-        # Create a new session directly
         session = SessionLocal()
         
         try:
             # Get reference product details
-            ref_query = text("""
-                SELECT magento_product_id, name, price, category_ids
-                FROM products 
-                WHERE magento_product_id = :product_id AND status = 1
-            """)
-            
-            ref_result = session.execute(ref_query, {"product_id": int(product_id)})
-            ref_product = ref_result.fetchone()
+            ref_stmt = select(Product).where(
+                and_(
+                    Product.magento_product_id == int(product_id),
+                    Product.status == 1,
+                )
+            )
+            ref_product = session.execute(ref_stmt).scalar_one_or_none()
             
             if not ref_product:
                 logger.warning("Reference product not found", product_id=product_id)
                 return []
             
-            # Find similar products based on categories and price range
-            similar_query = text("""
-                SELECT magento_product_id as id, name, price, category_ids,
-                       view_count, avg_rating
-                FROM products 
-                WHERE magento_product_id != :product_id 
-                AND status = 1 
-                AND visibility IN (2, 3, 4)
-                AND price BETWEEN :min_price AND :max_price
-                ORDER BY 
-                    CASE 
-                        WHEN category_ids && :ref_categories THEN 1
-                        ELSE 2
-                    END,
-                    ABS(price - :ref_price),
-                    COALESCE(avg_rating, 0) DESC,
-                    COALESCE(view_count, 0) DESC
-                LIMIT :limit
-            """)
-            
-            # Calculate price range (±50% of reference price)
             ref_price = float(ref_product.price) if ref_product.price else 50.0
             min_price = ref_price * 0.5
             max_price = ref_price * 1.5
+            ref_categories = ref_product.category_ids or []
+
+            # Build similarity query using ORM expressions
+            if ref_categories:
+                category_overlap = Product.category_ids.overlap(ref_categories)
+            else:
+                category_overlap = True
+
+            similar_stmt = (
+                select(Product)
+                .where(
+                    and_(
+                        Product.magento_product_id != int(product_id),
+                        Product.status == 1,
+                        Product.visibility.in_([2, 3, 4]),
+                        Product.price.between(min_price, max_price),
+                        category_overlap,
+                    )
+                )
+                .order_by(
+                    # Prefer products sharing categories
+                    func.case(
+                        (Product.category_ids.overlap(ref_categories), 1),
+                        else_=2,
+                    ),
+                    func.abs(Product.price - ref_price),
+                    func.coalesce(Product.avg_rating, 0).desc(),
+                    func.coalesce(Product.view_count, 0).desc(),
+                )
+                .limit(limit)
+            )
             
-            result = session.execute(similar_query, {
-                "product_id": int(product_id),
-                "min_price": min_price,
-                "max_price": max_price,
-                "ref_categories": ref_product.category_ids or [],
-                "ref_price": ref_price,
-                "limit": limit
-            })
+            products = session.execute(similar_stmt).scalars().all()
             
-            products = result.fetchall()
-            
-            recommendations = []
+            recommendations: List[Dict[str, Any]] = []
+            ref_cats = set(ref_categories)
+
             for i, product in enumerate(products):
-                # Calculate similarity score based on multiple factors
-                
-                # Category similarity
-                ref_cats = set(ref_product.category_ids or [])
                 prod_cats = set(product.category_ids or [])
-                category_similarity = len(ref_cats & prod_cats) / len(ref_cats | prod_cats) if (ref_cats | prod_cats) else 0
-                
-                # Price similarity (closer prices = higher similarity)
-                price_diff = abs(float(product.price) - ref_price) / ref_price if ref_price > 0 else 0
-                price_similarity = max(0, 1 - price_diff)
-                
-                # Quality score based on ratings and views
-                quality_score = ((product.avg_rating or 0) / 5.0) * 0.7 + min(1.0, (product.view_count or 0) / 100.0) * 0.3
-                
-                # Combined similarity score
-                similarity_score = (category_similarity * 0.5 + price_similarity * 0.3 + quality_score * 0.2)
+                union = ref_cats | prod_cats
+                category_similarity = len(ref_cats & prod_cats) / len(union) if union else 0.0
+
+                if ref_price > 0 and product.price is not None:
+                    price_diff = abs(float(product.price) - ref_price) / ref_price
+                    price_similarity = max(0.0, 1.0 - price_diff)
+                else:
+                    price_similarity = 0.0
+
+                quality_score = (
+                    ((float(product.avg_rating) if product.avg_rating else 0.0) / 5.0) * 0.7
+                    + min(1.0, (product.view_count or 0) / 100.0) * 0.3
+                )
+
+                similarity_score = (
+                    category_similarity * 0.5 + price_similarity * 0.3 + quality_score * 0.2
+                )
                 final_score = max(0.1, similarity_score - (i * 0.02))  # Position penalty
                 
-                recommendations.append({
-                    "product_id": str(product.id),
+                recommendations.append(
+                    {
+                        "product_id": str(product.magento_product_id),
                     "score": final_score,
                     "similarity_score": final_score,
-                    "reason": f"Similar product (category match: {category_similarity:.1%}, price similarity: {price_similarity:.1%})",
+                        "reason": (
+                            f"Similar product (category match: {category_similarity:.1%}, "
+                            f"price similarity: {price_similarity:.1%})"
+                        ),
                     "metadata": {
                         "algorithm": "content_based_similarity",
                         "reference_product_id": product_id,
@@ -110,9 +122,10 @@ def get_similar_products_simple(product_id: str, limit: int = 10) -> List[Dict[s
                         "ml_powered": True,
                         "personalized": False,
                         "algorithm_used": "content_similarity",
-                        "confidence_score": final_score
+                            "confidence_score": final_score,
+                        },
                     }
-                })
+                )
             
             return recommendations
             
@@ -122,3 +135,4 @@ def get_similar_products_simple(product_id: str, limit: int = 10) -> List[Dict[s
     except Exception as e:
         logger.error("Error getting similar products", error=str(e), product_id=product_id)
         return []
+

@@ -279,38 +279,29 @@ async def track_api_usage(
         correlation_id: Correlation ID for tracing
     """
     try:
-        from sqlalchemy import text
         from shared.database.base import get_db
+        from shared.models import APIKeyUsage
         
         async for db in get_db():
-            query = text("""
-                INSERT INTO api_key_usage (
-                    api_key_id, merchant_id, endpoint, method, status_code,
-                    response_time_ms, ip_address, user_agent, request_id, correlation_id
-                ) VALUES (
-                    :api_key_id, :merchant_id, :endpoint, :method, :status_code,
-                    :response_time_ms, :ip_address, :user_agent, :request_id, :correlation_id
-                )
-            """)
-            
-            await db.execute(query, {
-                "api_key_id": api_key_id,
-                "merchant_id": merchant_id,
-                "endpoint": endpoint,
-                "method": method,
-                "status_code": status_code,
-                "response_time_ms": response_time_ms,
-                "ip_address": ip_address,
-                "user_agent": user_agent,
-                "request_id": request_id,
-                "correlation_id": correlation_id
-            })
-            
+            usage = APIKeyUsage(
+                api_key_id=api_key_id,
+                merchant_id=merchant_id,
+                endpoint=endpoint,
+                method=method,
+                status_code=status_code,
+                response_time_ms=response_time_ms,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                request_id=request_id,
+                correlation_id=correlation_id,
+            )
+            db.add(usage)
             await db.commit()
-            
     except Exception as e:
-        logger.error("Failed to track API usage",
+        logger.error(
+            "Failed to track API usage",
                     error=str(e),
                     api_key_id=api_key_id,
-                    merchant_id=merchant_id)
+            merchant_id=merchant_id,
+        )
 
