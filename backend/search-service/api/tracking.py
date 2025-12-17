@@ -12,7 +12,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.personalized_search import personalized_search_engine
 from shared.middleware.auth import get_merchant_id
-from ..schemas.tracking import (
+from schemas.tracking import (
     ProductViewRequest,
     SearchQueryRequest,
     SearchClickRequest,

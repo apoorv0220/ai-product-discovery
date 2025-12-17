@@ -22,7 +22,7 @@ from core.synonym_loader import FileSynonymLoader
 from core.indexer import ProductIndexer
 from core.embedding_generator import EmbeddingGenerator
 from schemas.product import calculate_data_quality, DataQualityMetrics
-from ..schemas.index import IndexRequest, IndexResponse, IndexStatusResponse, EnsureIndexResponse, DeleteProductResponse
+from schemas.index import IndexRequest, IndexResponse, IndexStatusResponse, EnsureIndexResponse, DeleteProductResponse
 
 logger = structlog.get_logger()
 router = APIRouter()

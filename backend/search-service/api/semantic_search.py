@@ -16,7 +16,7 @@ import structlog
 import time
 
 from shared.middleware.auth import get_merchant_id
-from ..schemas.semantic_search import SemanticSearchRequest, SemanticSearchResult, SemanticSearchResponse
+from schemas.semantic_search import SemanticSearchRequest, SemanticSearchResult, SemanticSearchResponse
 
 logger = structlog.get_logger()
 router = APIRouter()
