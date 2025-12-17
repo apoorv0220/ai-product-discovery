@@ -128,17 +128,10 @@ async def lifespan(app: FastAPI):
     
     try:
         # Initialize database
+        # Note: Database schema is managed by Alembic migrations
+        # Run 'alembic upgrade head' before starting services
         await init_database()
         logger.info("Database initialized")
-
-        # Initialize personalization database tables
-        try:
-            from database.init_personalization import init_personalization_db
-            await init_personalization_db()
-            logger.info("Personalization database initialized")
-        except Exception as e:
-            logger.warning("Failed to initialize personalization database", error=str(e))
-            # Continue startup - personalization will be disabled
         
         # Initialize Elasticsearch
         es_manager = ElasticsearchManager()

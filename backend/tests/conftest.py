@@ -13,7 +13,6 @@ import os
 import sys
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text
 import redis.asyncio as redis_async
 from faker import Faker
 
@@ -159,29 +158,26 @@ async def api_key_manager(db_session) -> APIKeyManager:
 
 @pytest_asyncio.fixture
 async def test_merchant(db_session) -> dict:
-    """Create a test merchant"""
-    query = text("""
-        INSERT INTO merchants (name, email, company_name, tier, status)
-        VALUES (:name, :email, :company, :tier, 'active')
-        RETURNING id, name, email, tier, status
-    """)
+    """Create a test merchant using ORM"""
+    from shared.models import Merchant
     
-    result = await db_session.execute(query, {
-        "name": fake.company(),
-        "email": fake.email(),
-        "company": fake.company(),
-        "tier": "pro"
-    })
+    merchant = Merchant(
+        name=fake.company(),
+        email=fake.email(),
+        company_name=fake.company(),
+        tier="pro",
+        status="active"
+    )
     
-    row = result.fetchone()
+    db_session.add(merchant)
     await db_session.flush()  # Flush to DB but don't commit yet
     
     return {
-        "id": row[0],
-        "name": row[1],
-        "email": row[2],
-        "tier": row[3],
-        "status": row[4]
+        "id": merchant.id,
+        "name": merchant.name,
+        "email": merchant.email,
+        "tier": merchant.tier,
+        "status": merchant.status
     }
 
 

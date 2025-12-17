@@ -14,7 +14,7 @@ import pandas as pd
 
 from shared.database.base import get_database_session
 from shared.models.product import Product
-from shared.models.product_similarity import ProductSimilarity
+from shared.models.recommendation import ProductSimilarity
 from sqlalchemy import select, and_, desc, func, or_
 
 logger = structlog.get_logger()

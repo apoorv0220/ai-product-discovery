@@ -180,6 +180,9 @@ class APIKeyManager:
         if expires_in_days:
             expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
         
+        # Convert scopes list to JSON string for database storage
+        scopes_json = json.dumps(scopes)
+
         # Insert into database via ORM
         api_key_obj = APIKey(
             merchant_id=merchant_id,
@@ -189,7 +192,7 @@ class APIKeyManager:
             description=description,
             rate_limit_per_minute=rate_limit,
             status="active",
-            scopes=scopes,
+            scopes=scopes_json,
             expires_at=expires_at,
             created_by=created_by,
         )
@@ -198,7 +201,13 @@ class APIKeyManager:
         await self.db.flush()
         await self.db.refresh(api_key_obj)
         await self.db.commit()
-        
+
+        # Parse scopes from JSON string back to list
+        try:
+            scopes_list = json.loads(api_key_obj.scopes) if api_key_obj.scopes else []
+        except (json.JSONDecodeError, TypeError):
+            scopes_list = []
+
         # Prepare response
         key_record = {
             "id": api_key_obj.id,
@@ -207,7 +216,7 @@ class APIKeyManager:
             "name": api_key_obj.name,
             "rate_limit_per_minute": api_key_obj.rate_limit_per_minute,
             "status": api_key_obj.status,
-            "scopes": api_key_obj.scopes,
+            "scopes": scopes_list,
             "created_at": api_key_obj.created_at,
             "expires_at": api_key_obj.expires_at,
         }
@@ -307,7 +316,13 @@ class APIKeyManager:
                         )
                     )
                     await self.db.commit()
-                    
+
+                    # Parse scopes from JSON string back to list
+                    try:
+                        scopes_list = json.loads(row.scopes) if row.scopes else []
+                    except (json.JSONDecodeError, TypeError):
+                        scopes_list = []
+
                     # Return merchant context
                     context = {
                         "api_key_id": row.id,
@@ -317,7 +332,7 @@ class APIKeyManager:
                         "merchant_status": row.merchant_status,
                         "key_name": row.name,
                         "rate_limit_per_minute": row.rate_limit_per_minute,
-                        "scopes": row.scopes,
+                        "scopes": scopes_list,
                     }
                     
                     # Cache the result

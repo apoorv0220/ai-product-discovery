@@ -13,7 +13,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import StandardScaler
 
 from shared.database.base import get_database_session
-from shared.models.product_similarity import ProductSimilarity
+from shared.models.recommendation import ProductSimilarity
 from sqlalchemy import delete, select
 
 logger = structlog.get_logger()

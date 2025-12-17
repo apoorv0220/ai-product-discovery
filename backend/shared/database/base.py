@@ -91,22 +91,17 @@ async def init_database():
             
             if service_name in ['celery', 'analytics', 'recommendation']:
                 # Services that need full model access
+                # Import all models through shared.models.__init__ to register them with Base.metadata
                 try:
-                    from shared.models import product, user, search, recommendation, analytics
+                    from shared.models import (
+                        Merchant, Product, User, APIKey, APIKeyUsage,
+                        AnalyticsEvent, ProductSimilarity,
+                        UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
+                    )
                     logger.info("Successfully imported all models")
                     models_imported = True
-                except ImportError:
-                    # Try alternative import paths
-                    try:
-                        from shared.models.product import Product
-                        from shared.models.user import User
-                        from shared.models.search import SearchQuery
-                        from shared.models.recommendation import Recommendation
-                        from shared.models.analytics import AnalyticsEvent
-                        logger.info("Successfully imported individual models")
-                        models_imported = True
-                    except ImportError as ie:
-                        logger.warning("Could not import models", import_error=str(ie), service=service_name)
+                except ImportError as ie:
+                    logger.warning("Could not import models", import_error=str(ie), service=service_name)
             else:
                 # Services like search that don't need full models
                 logger.info("Skipping model imports for service", service=service_name)

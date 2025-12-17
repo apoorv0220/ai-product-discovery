@@ -224,7 +224,7 @@ class RecommendationEngine:
             
             # Load data from database
             from shared.models.product import Product
-            from shared.models.recommendation import CollaborativeFiltering
+            from shared.models.personalization import UserProductViews
             from shared.database.base import get_database_session
             from sqlalchemy import select
             
@@ -250,19 +250,22 @@ class RecommendationEngine:
                         'purchase_count': product.purchase_count or 0
                     })
                 
-                # Load interactions
-                interaction_query = select(CollaborativeFiltering)
+                # Load user interactions from UserProductViews (collaborative filtering data)
+                # Note: CollaborativeFiltering model doesn't exist, using UserProductViews instead
+                interaction_query = select(UserProductViews)
                 interaction_result = await session.execute(interaction_query)
                 interactions = interaction_result.scalars().all()
                 
                 # Convert to ML format
                 interactions_data = []
                 for interaction in interactions:
+                    # Use view_duration as implicit rating (longer views = higher interest)
+                    implicit_rating = min(1.0, (interaction.view_duration or 0) / 60.0)  # Normalize to 0-1
                     interactions_data.append({
-                        'user_id': str(interaction.user_id),
+                        'user_id': str(interaction.user_id or interaction.session_id),
                         'product_id': str(interaction.product_id),
-                        'rating': interaction.implicit_rating,
-                        'timestamp': interaction.updated_at.isoformat() if interaction.updated_at else datetime.utcnow().isoformat()
+                        'rating': implicit_rating,
+                        'timestamp': interaction.created_at.isoformat() if interaction.created_at else datetime.utcnow().isoformat()
                     })
                 
                 # Train ML models

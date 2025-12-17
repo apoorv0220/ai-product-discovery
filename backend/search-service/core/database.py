@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,7 @@ async def test_database_connection():
     """Test database connection"""
     try:
         async with get_async_session() as session:
-            result = await session.execute("SELECT 1")
+            result = await session.execute(text("SELECT 1"))
             logger.info("✅ Database connection test successful")
             return True
     except Exception as e:
