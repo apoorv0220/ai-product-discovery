@@ -9,7 +9,6 @@ AI Product Discovery Suite - Search Service Indexing API
 """
 
 from fastapi import APIRouter, Request, HTTPException, status
-from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import structlog
 import json
@@ -23,6 +22,7 @@ from core.synonym_loader import FileSynonymLoader
 from core.indexer import ProductIndexer
 from core.embedding_generator import EmbeddingGenerator
 from schemas.product import calculate_data_quality, DataQualityMetrics
+from ..schemas.index import IndexRequest, IndexResponse, IndexStatusResponse, EnsureIndexResponse, DeleteProductResponse
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -56,17 +56,6 @@ async def _ensure_index(request: Request, merchant_id: int) -> None:
     await es.ensure_index(merchant_id, settings, PRODUCT_INDEX_MAPPING)
 
 
-class IndexRequest(BaseModel):
-    """Index request model"""
-    products: List[Dict[str, Any]]
-
-
-class IndexResponse(BaseModel):
-    """Index response model with data quality metrics"""
-    success: bool
-    indexed_count: int
-    message: str
-    data_quality: Optional[DataQualityMetrics] = None
 
 
 @router.post("/products", response_model=IndexResponse)

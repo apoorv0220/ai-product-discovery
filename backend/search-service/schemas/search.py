@@ -180,8 +180,9 @@ class SearchRequest(BaseModel):
                 "limit": 20,
                 "offset": 0,
                 "filters": {
-                    "category": "hoodies",
-                    "price_range": {"min": 20, "max": 100}
+                    "categories": ["Hoodies & Sweatshirts"],
+                    "price": {"min": 50, "max": 100},
+                    "brands": ["Nike", "Adidas"]
                 },
                 "user_id": "user_12345",
                 "session_id": "session_abc123",

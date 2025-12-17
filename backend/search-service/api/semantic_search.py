@@ -11,41 +11,15 @@ Semantic search endpoint using Qdrant vector similarity search.
 """
 
 from fastapi import APIRouter, Request, HTTPException
-from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import structlog
 import time
 
 from shared.middleware.auth import get_merchant_id
+from ..schemas.semantic_search import SemanticSearchRequest, SemanticSearchResult, SemanticSearchResponse
 
 logger = structlog.get_logger()
 router = APIRouter()
-
-
-class SemanticSearchRequest(BaseModel):
-    """Semantic search request model"""
-    query: str = Field(..., description="Search query")
-    limit: int = Field(20, ge=1, le=100, description="Number of results")
-    offset: int = Field(0, ge=0, description="Offset for pagination")
-    filters: Optional[Dict[str, Any]] = Field(None, description="Optional filters")
-    min_score: float = Field(0.5, ge=0.0, le=1.0, description="Minimum similarity score")
-
-
-class SemanticSearchResult(BaseModel):
-    """Semantic search result item"""
-    product_id: str
-    name: str
-    score: float
-    metadata: Optional[Dict[str, Any]] = None
-
-
-class SemanticSearchResponse(BaseModel):
-    """Semantic search response model"""
-    results: List[SemanticSearchResult]
-    total: int
-    query: str
-    took: float
-    search_mode: str = "semantic"
 
 
 @router.post("/")

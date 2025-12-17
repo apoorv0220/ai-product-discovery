@@ -4,9 +4,7 @@ Tracks user behavior to improve search ranking
 """
 
 from fastapi import APIRouter, HTTPException, Request, Body
-from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 import logging
 
 import sys
@@ -14,67 +12,19 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.personalized_search import personalized_search_engine
 from shared.middleware.auth import get_merchant_id
+from ..schemas.tracking import (
+    ProductViewRequest,
+    SearchQueryRequest,
+    SearchClickRequest,
+    BulkTrackingRequest,
+    BulkTrackingResponse,
+    TrackingResponse,
+    UserHistoryResponse,
+    PersonalizationWeightsResponse
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-class ProductViewRequest(BaseModel):
-    """Request model for tracking product views"""
-    # merchant_id is extracted from API key authentication, not provided in request
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    product_id: str = Field(..., description="Product ID")
-    product_name: Optional[str] = Field(None, description="Product name")
-    product_sku: Optional[str] = Field(None, description="Product SKU")
-    categories: Optional[List[str]] = Field(None, description="Product category names")
-    category_ids: Optional[List[str]] = Field(None, description="Product category IDs")
-    # Platform context for better personalization (optional)
-    platform: Optional[str] = Field(None, description="Platform source: magento, woocommerce, shopify, etc.")
-    device_type: Optional[str] = Field(None, description="Device type: mobile, desktop, tablet")
-    user_agent: Optional[str] = Field(None, description="Browser/device user agent string")
-    referrer: Optional[str] = Field(None, description="Referring page URL")
-    view_duration: Optional[int] = Field(0, description="Time spent viewing in seconds")
-    came_from_search: Optional[bool] = Field(False, description="Did user come from search?")
-    search_query: Optional[str] = Field(None, description="Search query if came from search")
-
-class SearchQueryRequest(BaseModel):
-    """Request model for tracking search queries"""
-    # merchant_id is extracted from API key authentication, not provided in request
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    query: str = Field(..., description="Search query")
-    results: Optional[List[Dict[str, Any]]] = Field(None, description="Search results")
-
-class SearchClickRequest(BaseModel):
-    """Request model for tracking search result clicks"""
-    # merchant_id is extracted from API key authentication, not provided in request
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    search_query: str = Field(..., description="Original search query")
-    clicked_product_id: str = Field(..., description="ID of clicked product")
-    clicked_product_name: Optional[str] = Field(None, description="Name of clicked product")
-    position_in_results: Optional[int] = Field(None, description="Position in search results")
-
-class BulkTrackingRequest(BaseModel):
-    """Request model for bulk historical data ingestion"""
-    # merchant_id is extracted from API key authentication, not provided in request
-    product_views: Optional[List[ProductViewRequest]] = Field(default_factory=list, description="Historical product views")
-    search_queries: Optional[List[SearchQueryRequest]] = Field(default_factory=list, description="Historical search queries")
-    search_clicks: Optional[List[SearchClickRequest]] = Field(default_factory=list, description="Historical search clicks")
-
-class BulkTrackingResponse(BaseModel):
-    """Response model for bulk tracking endpoints"""
-    success: bool
-    message: str
-    processed_counts: Dict[str, int]
-    errors: List[str]
-    timestamp: str
-
-class TrackingResponse(BaseModel):
-    """Response model for tracking endpoints"""
-    success: bool
-    message: str
-    timestamp: str
 
 @router.post("/product-view", response_model=TrackingResponse)
 async def track_product_view(
