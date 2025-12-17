@@ -28,7 +28,7 @@ COPY search-service/ ./search-service/
 COPY shared/ ./shared/
 
 # Copy alembic configuration for migrations
-COPY alembic.ini ./
+COPY ../alembic.ini ./
 COPY alembic/ ./alembic/
 
 # Create non-root user
