@@ -51,19 +51,11 @@ services:
     container_name: ai_discovery_search
     ports:
       - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
+    env_file:
+      - .env.production
     environment:
-      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - SEARCH_SERVICE_HOST=0.0.0.0
-      - SEARCH_SERVICE_PORT=${SEARCH_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
+      # Override environment to production when using env_file
+      - ENVIRONMENT=production
     restart: unless-stopped
     networks:
       - ai-discovery

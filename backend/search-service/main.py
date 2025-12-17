@@ -40,17 +40,32 @@ from core.cache import SearchCache
 import redis.asyncio as redis_async
 from shared.config.qdrant import QDRANT_CONFIG
 
-# Load environment variables from .env file at project root
+# Load environment variables from .env file (dual environment support)
 try:
     from dotenv import load_dotenv
     import pathlib
-    # Path from backend/search-service/main.py to project root .env file
-    env_path = pathlib.Path(__file__).parent.parent.parent / '.env'
-    if env_path.exists():
-        load_dotenv(env_path)
-        print(f"[SUCCESS] Loaded environment variables from {env_path}")
-    else:
-        print(f"[WARNING] .env file not found at {env_path}")
+
+    # Try multiple .env file locations for dual environment support
+    env_paths = [
+        # Docker env_file loaded automatically (no manual loading needed)
+        pathlib.Path('/app/.env'),  # Docker container .env (if mounted)
+        # Local development paths
+        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+        pathlib.Path(__file__).parent.parent.parent / '.env.production',  # Production
+        pathlib.Path(__file__).parent.parent.parent / '.env.local',  # Local overrides
+    ]
+
+    env_loaded = False
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"[SUCCESS] Loaded environment variables from {env_path}")
+            env_loaded = True
+            break
+
+    if not env_loaded:
+        print("[INFO] No .env file found - using Docker environment variables or defaults")
+
 except ImportError:
     print("[WARNING] python-dotenv not available, skipping .env loading")
 
