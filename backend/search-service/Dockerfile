@@ -27,6 +27,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY search-service/ ./search-service/
 COPY shared/ ./shared/
 
+# Copy alembic configuration for migrations
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
+
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash discovery && \
     chown -R discovery:discovery /app
