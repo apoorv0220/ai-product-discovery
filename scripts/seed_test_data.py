@@ -41,20 +41,41 @@ def print_warning(message):
     print(f"{YELLOW}! {message}{RESET}")
 
 
-# Setup paths - simplified for new structure
+# Setup paths - dual environment support
 def setup_paths():
-    """Set up Python paths for the new backend structure"""
+    """Set up Python paths for both local dev and production Docker"""
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
 
-    # Always add backend directory to path
-    backend_path = project_root / "backend"
-    if backend_path.exists():
-        sys.path.insert(0, str(backend_path))
-        print_info(f"Added backend path: {backend_path}")
+    # Check if we're in production Docker (shared modules directly available)
+    if (script_dir / "shared").exists():
+        # Local development - scripts/ directory has shared/
+        sys.path.insert(0, str(project_root))
+        print_info("Using local development environment")
+    elif (Path("/app/shared")).exists():
+        # Production Docker - modules are in /app
+        sys.path.insert(0, "/app")
+        print_info("Using production Docker environment")
     else:
-        print_error(f"Backend directory not found: {backend_path}")
-        sys.exit(1)
+        # Try to find shared modules in common locations
+        possible_paths = [project_root, Path("/app"), Path("/opt/app")]
+        for path in possible_paths:
+            if (path / "shared").exists():
+                sys.path.insert(0, str(path))
+                print_info(f"Found shared modules at: {path}")
+                break
+        else:
+            # Fallback search in current directory tree
+            current_dir = Path.cwd()
+            for parent in [current_dir] + list(current_dir.parents):
+                if (parent / "shared").exists():
+                    sys.path.insert(0, str(parent))
+                    print_info(f"Found shared modules via fallback search: {parent}")
+                    break
+            else:
+                print_error("Could not find shared modules in any expected location")
+                print_error("Searched in: local dev, /app, /opt/app, and current directory tree")
+                sys.exit(1)
 
 # Setup paths before other imports
 setup_paths()

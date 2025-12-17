@@ -173,12 +173,53 @@ python scripts/init_dummy_data.py
 
 ---
 
+## 🗄️ Database Setup & Migrations
+
+The project uses **SQLAlchemy ORM** with **Alembic** for database schema management.
+
+### Initial Database Setup
+
+```bash
+# 1. Start PostgreSQL (via Docker Compose or existing instance)
+docker-compose up -d postgres
+
+# 2. Run Alembic migrations to create all tables
+alembic upgrade head
+
+# 3. (Optional) Seed test data
+python scripts/seed_test_data.py
+```
+
+### Managing Database Migrations
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "Description of changes"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback one migration
+alembic downgrade -1
+
+# View migration history
+alembic history
+
+# Check current database version
+alembic current
+```
+
+**Note**: Database schema is managed entirely through Alembic migrations. Do not modify tables directly in production.
+
 ## 🚀 Deployment Options
 
 ### Development & Testing
 ```bash
 # Localhost (3 minutes)
 ./quick_start.sh
+
+# After starting services, run migrations
+alembic upgrade head
 ```
 
 ### Shared Server (Existing PostgreSQL/Redis)
@@ -186,12 +227,18 @@ python scripts/init_dummy_data.py
 ```bash
 # Automated deployment for shared servers
 ./deploy_shared_server.sh
+
+# Run migrations on shared database
+alembic upgrade head
 ```
 
 ### Production Deployment
 ```bash
 # Production with monitoring
 ./scripts/deploy.sh production
+
+# Run migrations in production
+alembic upgrade head
 ```
 
 ### Cloud Platforms

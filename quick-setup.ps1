@@ -78,7 +78,7 @@ Write-Host "  ✓ Dependencies installed" -ForegroundColor Green
 
 # Run migrations
 Write-Host "`n[6/7] Running database migrations..." -ForegroundColor Yellow
-python scripts/run_migrations.py
+alembic upgrade head
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Migrations failed" -ForegroundColor Red
