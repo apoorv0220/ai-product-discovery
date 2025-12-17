@@ -26,7 +26,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy service code
 COPY search-service/ ./search-service/
 COPY shared/ ./shared/
-COPY models ./models
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash discovery && \
