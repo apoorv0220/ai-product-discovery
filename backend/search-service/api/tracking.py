@@ -5,6 +5,7 @@ Tracks user behavior to improve search ranking
 
 from fastapi import APIRouter, HTTPException, Request, Body
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 import logging
 
 import sys
