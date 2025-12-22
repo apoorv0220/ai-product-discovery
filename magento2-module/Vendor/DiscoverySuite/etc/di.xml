@@ -58,6 +58,7 @@
             <argument name="commands" xsi:type="array">
                 <item name="discoveryTestConnection" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestConnection</item>
                 <item name="discoverySyncCatalog" xsi:type="object">Vendor\DiscoverySuite\Console\Command\SyncCatalog</item>
+                <item name="discovery_reindex_search" xsi:type="object">Vendor\DiscoverySuite\Console\Command\ReindexSearch</item>
                 <item name="discoveryTestAdvancedAi" xsi:type="object">Vendor\DiscoverySuite\Console\Command\TestAdvancedAi</item>
             </argument>
         </arguments>
@@ -94,5 +95,20 @@
             <argument name="httpClient" xsi:type="object">DiscoverySuiteAssistantClient</argument>
         </arguments>
     </type>
-    
+      <!-- Plugin Http Injection -->
+    <type name="Vendor\DiscoverySuite\Plugin\ResponseSendPlugin">
+        <arguments>
+            <argument name="httpClient" xsi:type="object">DiscoverySuiteSearchClient</argument>
+        </arguments>
+    </type>
+
+    <type name="Magento\Catalog\Controller\Product\View">
+        <plugin name="vendor_search_click_plugin"
+                type="Vendor\DiscoverySuite\Plugin\Search\SearchClickPlugin"/>
+    </type>
+    <!-- Send bulk payload once per request -->
+    <type name="Magento\Framework\App\Response\Http">
+        <plugin name="discovery_bulk_sender"
+                type="Vendor\DiscoverySuite\Plugin\ResponseSendPlugin"/>
+    </type>
 </config>
