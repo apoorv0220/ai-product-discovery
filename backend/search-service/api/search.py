@@ -190,7 +190,7 @@ async def _perform_keyword_search(
         aggregations=aggregations,
         merchandising_rules=merchandising_rules,
     )
-    
+
     # Check cache
     cache_key = None
     cached = None

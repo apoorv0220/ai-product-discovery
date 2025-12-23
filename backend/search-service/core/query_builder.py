@@ -22,12 +22,8 @@ class SearchQueryBuilder:
     ) -> Dict:
         import structlog
         logger = structlog.get_logger()
-        logger.info(f"Building search query: query='{query}', merchant_id={merchant_id}, merchandising_rules={len(merchandising_rules or [])}")
-
         size = min(max(1, size), self.MAX_SIZE)
         from_ = max(0, from_)
-
-        logger.info("Query builder: size and from_ validated")
 
         must_clauses: List[Dict] = [
             {
@@ -77,15 +73,11 @@ class SearchQueryBuilder:
             }
         ]
 
-        logger.info("Query builder: must_clauses built")
-
         # Add merchandising boost rules if provided
         if merchandising_rules:
-            logger.info(f"Processing {len(merchandising_rules)} merchandising rules")
             # Extract boost rules
             boost_rules = [r for r in merchandising_rules if r.get("rule_type") == "boost"]
             if boost_rules:
-                logger.info(f"Applying {len(boost_rules)} boost rules")
                 # Apply boosts to the function_score query
                 function_score = must_clauses[0].get("function_score", {})
                 functions = function_score.get("functions", [])
@@ -108,13 +100,8 @@ class SearchQueryBuilder:
                     # Use sum for additive boosts (merchandising + existing)
                     must_clauses[0]["function_score"]["score_mode"] = "sum"
 
-        logger.info("Query builder: merchandising rules processed")
-
         filter_clauses = self._build_filters(filters)
-        logger.info("Query builder: filters built")
-
         sort_clause = self._validate_sort(sort)
-        logger.info("Query builder: sort validated")
 
         query_dict = {
             "query": {"bool": {"must": must_clauses, "filter": filter_clauses}},
@@ -123,14 +110,11 @@ class SearchQueryBuilder:
             "from": from_,
         }
 
-        logger.info("Query builder: query_dict constructed")
-
         try:
             # Add aggregations if provided
             if aggregations:
                 query_dict["aggs"] = aggregations
 
-            logger.info(f"Query built successfully, returning dict with keys: {list(query_dict.keys())}")
             return query_dict
         except Exception as e:
             import structlog
@@ -192,7 +176,6 @@ class SearchQueryBuilder:
             if aggregations:
                 query_dict["aggs"] = aggregations
 
-            logger.info(f"Query built successfully, returning dict with keys: {list(query_dict.keys())}")
             return query_dict
         except Exception as e:
             import structlog

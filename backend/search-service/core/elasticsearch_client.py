@@ -111,7 +111,7 @@ class ElasticsearchManager:
         assert self.client is not None, "Elasticsearch client not initialized"
         index = self.get_index_name(merchant_id)
         start = asyncio.get_event_loop().time()
-        
+
         # Query builder already includes from and size in the query body
         # But we need to ensure they match the passed parameters (override if needed)
         query_with_pagination = query.copy()
