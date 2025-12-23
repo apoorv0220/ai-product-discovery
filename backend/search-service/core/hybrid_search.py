@@ -119,7 +119,7 @@ def reciprocal_rank_fusion(
                     keyword_results_map[product_id] = dict(result)  # Create a copy to be safe
                 except (TypeError, ValueError) as e:
                     logger.warning(f"Failed to store keyword result for product {product_id}: {e}")
-
+    
     # Extract product IDs and scores from semantic results
     for rank, result in enumerate(semantic_results, start=1):
         if not result or not isinstance(result, dict):

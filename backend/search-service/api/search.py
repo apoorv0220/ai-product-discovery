@@ -190,7 +190,7 @@ async def _perform_keyword_search(
         aggregations=aggregations,
         merchandising_rules=merchandising_rules,
     )
-
+    
     # Check cache
     cache_key = None
     cached = None
@@ -552,11 +552,30 @@ async def search_products(search_request: SearchRequest, request: Request):
             if redis_client:
                 # Get Redis client from search_cache if available
                 redis_client = redis_client.redis if hasattr(redis_client, "redis") else None
-            
+
             merchandising_engine = MerchandisingRulesEngine(redis_client=redis_client)
+            logger.info(f"Loading merchandising rules for merchant_id={merchant_id}")
             active_rules = await merchandising_engine.load_active_rules(merchant_id)
-            
-            if active_rules:
+            logger.info(f"Loaded {len(active_rules)} active rules")
+
+            # Convert SQLAlchemy objects to dictionaries for merchandising engine
+            active_rules_dicts = []
+            for rule in active_rules:
+                rule_dict = {
+                    "id": rule.id,
+                    "name": rule.name,
+                    "rule_type": rule.rule_type,
+                    "priority": rule.priority,
+                    "is_active": rule.is_active,
+                    "trigger_conditions": rule.trigger_conditions,
+                    "target_conditions": rule.target_conditions,
+                    "action_config": rule.action_config,
+                    "created_at": rule.created_at,
+                    "updated_at": rule.updated_at
+                }
+                active_rules_dicts.append(rule_dict)
+
+            if active_rules_dicts:
                 # Build context for rule evaluation
                 context = {
                     "merchant_id": merchant_id,
@@ -564,11 +583,13 @@ async def search_products(search_request: SearchRequest, request: Request):
                 }
                 
                 # Evaluate rules
+                logger.info(f"Evaluating rules for query='{search_request.query}'")
                 matched_rules = merchandising_engine.evaluate_rules(
                     search_request.query,
                     context,
-                    active_rules
+                    active_rules_dicts
                 )
+                logger.info(f"Rule evaluation result: {matched_rules}")
                 rules_applied_count = sum(len(rules) for rules in matched_rules.values())
                 merchandising_applied = rules_applied_count > 0
                 
@@ -778,8 +799,8 @@ async def search_products(search_request: SearchRequest, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Search failed", error=str(e), search_mode=search_mode, exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "Search failed", "search_mode": search_mode})
+        logger.error("Search failed", error=str(e), search_mode=search_mode, exc_info=True, query=search_request.query, merchant_id=merchant_id)
+        raise HTTPException(status_code=500, detail={"error": "Search failed", "search_mode": search_mode, "details": str(e)})
 
 
 @router.get("/")

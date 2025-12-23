@@ -52,7 +52,8 @@ async def create_rule(
                 rule_type=rule_data.rule_type,
                 priority=rule_data.priority,
                 is_active=rule_data.is_active,
-                conditions=rule_data.conditions,
+                trigger_conditions=rule_data.trigger_conditions,
+                target_conditions=rule_data.target_conditions,
                 action_config=rule_data.action_config
             )
             
@@ -260,7 +261,13 @@ async def preview_rule(
             # Evaluate rule
             engine = await get_merchandising_engine(request)
             context = {"merchant_id": merchant_id, "categories": []}
-            would_match = engine._match_condition(rule.conditions, preview_request.query, context)
+
+            # Use trigger_conditions if present, otherwise fall back to target_conditions or old conditions
+            trigger_conditions = getattr(rule, 'trigger_conditions', None)
+            if trigger_conditions is None:
+                trigger_conditions = getattr(rule, 'target_conditions', None) or getattr(rule, 'conditions', None)
+
+            would_match = trigger_conditions and engine._match_condition(trigger_conditions, preview_request.query, context)
             
             # If rule would match, get affected products
             matched_products = []
@@ -294,17 +301,18 @@ async def preview_rule(
                             ]
                     elif rule.rule_type == "hide":
                         # Find products that match hide condition
-                        condition = rule.conditions
-                        if condition.get("type") == "product_id":
-                            value = condition.get("value")
+                        target_conditions = getattr(rule, 'target_conditions', None) or getattr(rule, 'conditions', None)
+                        if target_conditions and target_conditions.get("type") == "product_id":
+                            value = target_conditions.get("value")
                             product_ids = [value] if not isinstance(value, list) else value
                             matched_products = [
                                 r for r in result_data.get("results", [])
                                 if str(r.get("product_id", "")) in [str(pid) for pid in product_ids]
                             ]
                     else:  # boost
-                        # For boost, show top results that would be boosted
-                        matched_products = result_data.get("results", [])[:5]
+                        # For boost, we can't easily determine which products would be boosted
+                        # without running the full query. Show a message instead.
+                        matched_products = []
                     
                 except Exception as e:
                     logger.warning(f"Failed to get preview products", error=str(e))

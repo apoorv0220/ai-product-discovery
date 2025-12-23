@@ -85,20 +85,25 @@ class SearchQueryBuilder:
                 for rule in boost_rules:
                     boost_factor = rule.get("action_config", {}).get("boost_factor", 1.0)
                     boost_factor = min(10.0, max(0.1, float(boost_factor)))
-                    
-                    # Build filter from rule conditions
-                    filter_clause = self._build_merchandising_filter(rule.conditions)
-                    if filter_clause:
-                        functions.append({
-                            "filter": filter_clause,
-                            "weight": boost_factor
-                        })
+
+                    # Use target_conditions if present, otherwise fall back to old conditions
+                    target_conditions = rule.get("target_conditions") or rule.get("conditions")
+                    logger.info(f"Processing boost rule: target_conditions={target_conditions}")
+                    if target_conditions:
+                        filter_clause = self._build_merchandising_filter(target_conditions)
+                        logger.info(f"Built filter clause: {filter_clause}")
+                        if filter_clause:
+                            functions.append({
+                                "filter": filter_clause,
+                                "weight": boost_factor
+                            })
                 
                 # Update functions list
                 if functions:
                     must_clauses[0]["function_score"]["functions"] = functions
                     # Use sum for additive boosts (merchandising + existing)
                     must_clauses[0]["function_score"]["score_mode"] = "sum"
+                    logger.info(f"Added {len(functions)} boost functions to query")
 
         filter_clauses = self._build_filters(filters)
         sort_clause = self._validate_sort(sort)
@@ -132,9 +137,13 @@ class SearchQueryBuilder:
         Returns:
             Elasticsearch filter clause or None
         """
+        import structlog
+        logger = structlog.get_logger()
+        logger.info(f"_build_merchandising_filter called with conditions: {conditions}")
         condition_type = conditions.get("type")
         operator = conditions.get("operator")
         value = conditions.get("value")
+        logger.info(f"condition_type={condition_type}, operator={operator}, value={value}")
         
         if condition_type == "product_id":
             if operator == "equals":
@@ -170,11 +179,20 @@ class SearchQueryBuilder:
             "size": size,
             "from": from_,
         }
-        
+
         try:
             # Add aggregations if provided
             if aggregations:
                 query_dict["aggs"] = aggregations
+
+            # Log merchandising function count
+            functions_count = 0
+            if merchandising_rules:
+                boost_rules = [r for r in merchandising_rules if r.get("rule_type") == "boost"]
+                if boost_rules:
+                    fs = must_clauses[0].get("function_score", {})
+                    functions_count = len(fs.get("functions", []))
+            logger.info(f"Query built with {functions_count} merchandising boost functions")
 
             return query_dict
         except Exception as e:

@@ -105,7 +105,9 @@ class MerchandisingRulesEngine:
                         "id": rule.id,
                         "rule_type": rule.rule_type,
                         "priority": rule.priority,
-                        "conditions": rule.conditions,
+                        "trigger_conditions": getattr(rule, 'trigger_conditions', None),
+                        "target_conditions": getattr(rule, 'target_conditions', None),
+                        "conditions": getattr(rule, 'conditions', None),  # For backwards compatibility
                         "action_config": rule.action_config
                     }
                     for rule in rules
@@ -161,15 +163,25 @@ class MerchandisingRulesEngine:
         matched = {"boost": [], "pin": [], "hide": []}
         
         # Sort rules by priority (highest first)
-        sorted_rules = sorted(rules, key=lambda r: r.priority, reverse=True)
+        sorted_rules = sorted(rules, key=lambda r: r.get('priority', 0), reverse=True)
         
         for rule in sorted_rules:
-            if self._match_condition(rule.conditions, query, context):
-                matched[rule.rule_type].append(rule)
-                logger.debug(
-                    f"Rule matched: id={rule.id}, type={rule.rule_type}, "
-                    f"priority={rule.priority}, name={rule.name}"
+            # Use trigger_conditions if present, otherwise fall back to target_conditions or old conditions
+            trigger_conditions = rule.get('trigger_conditions', None)
+            if trigger_conditions is None:
+                # For backwards compatibility, use target_conditions or old conditions field
+                trigger_conditions = rule.get('target_conditions', None) or rule.get('conditions', None)
+
+            logger.debug(f"Evaluating rule {rule.get('id')}: trigger_conditions={trigger_conditions}, query='{query}', context={context}")
+
+            if trigger_conditions and self._match_condition(trigger_conditions, query, context):
+                matched[rule.get('rule_type')].append(rule)
+                logger.info(
+                    f"Rule matched: id={rule.get('id')}, type={rule.get('rule_type')}, "
+                    f"priority={rule.get('priority')}, trigger={trigger_conditions}, name={rule.get('name')}"
                 )
+            else:
+                logger.debug(f"Rule NOT matched: id={rule.get('id')}, trigger_conditions={trigger_conditions}")
         
         logger.info(
             f"Evaluated {len(rules)} rules, matched: "
@@ -284,12 +296,12 @@ class MerchandisingRulesEngine:
         
         # Add boost functions for each rule
         for rule in boost_rules:
-            boost_factor = rule.action_config.get("boost_factor", 1.0)
+            boost_factor = rule.get('action_config', {}).get("boost_factor", 1.0)
             # Cap at 10.0, minimum 0.1
             boost_factor = min(10.0, max(0.1, float(boost_factor)))
             
             # Create filter based on rule conditions
-            filter_clause = self._build_boost_filter(rule.conditions)
+            filter_clause = self._build_boost_filter(rule.get('target_conditions') or rule.get('conditions'))
             
             if filter_clause:
                 functions.append({
@@ -297,7 +309,7 @@ class MerchandisingRulesEngine:
                     "weight": boost_factor
                 })
                 logger.debug(
-                    f"Added boost function: rule_id={rule.id}, "
+                    f"Added boost function: rule_id={rule.get('id')}, "
                     f"boost_factor={boost_factor}, filter={filter_clause}"
                 )
         
@@ -366,8 +378,8 @@ class MerchandisingRulesEngine:
         # Create mapping: position -> product_id
         pinned_products = {}
         for rule in pin_rules:
-            position = rule.action_config.get("position", 1)
-            product_id = str(rule.action_config.get("product_id", ""))
+            position = rule.get('action_config', {}).get("position", 1)
+            product_id = str(rule.get('action_config', {}).get("product_id", ""))
             if product_id and position not in pinned_products:
                 pinned_products[position] = product_id
         
@@ -440,7 +452,7 @@ class MerchandisingRulesEngine:
         hidden_ids = set()
         for rule in hide_rules:
             # Extract product IDs from rule conditions
-            condition = rule.conditions
+            condition = rule.get('target_conditions') or rule.get('conditions')
             if condition.get("type") == "product_id":
                 value = condition.get("value")
                 if isinstance(value, list):

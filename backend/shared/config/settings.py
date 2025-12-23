@@ -66,8 +66,10 @@ class Settings(BaseSettings):
             db_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '7010'))
 
         db_name = os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'ai_discovery'))
-        db_user = os.getenv('POSTGRES_USER', os.getenv('DB_USER', 'ai_user'))
-        db_password = os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD', 'ai_password'))
+        db_user = os.getenv('POSTGRES_USER', os.getenv('DB_USER'))
+        db_password = os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD'))
+        if not db_user or not db_password:
+            raise ValueError("Database credentials not found. Please set POSTGRES_USER/POSTGRES_PASSWORD or DB_USER/DB_PASSWORD environment variables.")
         default_db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
         self.DATABASE_URL = os.getenv('DATABASE_URL', default_db_url)
@@ -79,9 +81,12 @@ class Settings(BaseSettings):
 
         if environment == 'production':
             # Production: Use internal Docker network names
-            default_redis_url = "redis://:redis_password_2024@redis:6379/0"
-            default_celery_broker = "redis://:redis_password_2024@redis:6379/1"
-            default_celery_backend = "redis://:redis_password_2024@redis:6379/2"
+            redis_password = os.getenv('REDIS_PASSWORD')
+            if not redis_password:
+                raise ValueError("REDIS_PASSWORD environment variable is required for production")
+            default_redis_url = f"redis://:{redis_password}@redis:6379/0"
+            default_celery_broker = f"redis://:{redis_password}@redis:6379/1"
+            default_celery_backend = f"redis://:{redis_password}@redis:6379/2"
         else:
             # Development: Use external mapped ports
             redis_host = os.getenv('REDIS_HOST', 'localhost')

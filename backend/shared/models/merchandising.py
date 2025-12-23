@@ -28,12 +28,23 @@ class MerchandisingRule(Base):
     rule_type = Column(String(50), nullable=False)  # 'boost', 'pin', 'hide'
     priority = Column(Integer, default=500, nullable=False)  # 1-1000, higher = more important
     is_active = Column(Boolean, default=True, nullable=False, index=True)
-    
-    # Conditions (JSONB for flexibility)
-    # Example: {"type": "query_match", "operator": "exact", "value": "laptop"}
-    # Or: {"type": "category", "operator": "equals", "value": "Electronics"}
-    # Or: {"type": "product_id", "operator": "in", "value": ["123", "456"]}
-    conditions = Column(JSONB, nullable=False)
+
+    # Trigger conditions - when should this rule activate? (JSONB)
+    # Examples:
+    # {"type": "query_match", "operator": "contains", "value": "laptop"}
+    # {"type": "category", "operator": "equals", "value": "Electronics"} (legacy support)
+    trigger_conditions = Column(JSONB, nullable=True)
+
+    # Target conditions - which products should be affected? (JSONB)
+    # Only used for boost rules. For pin/hide, products are specified in action_config
+    # Examples:
+    # {"type": "category", "operator": "equals", "value": "Electronics"}
+    # {"type": "product_id", "operator": "in", "value": ["123", "456"]}
+    target_conditions = Column(JSONB, nullable=True)
+
+    # Legacy conditions field for backwards compatibility during migration
+    # Will be removed after migration
+    conditions = Column(JSONB, nullable=True)
     
     # Action configuration (JSONB)
     # For boost: {"boost_factor": 2.5}  # 0.1-10.0

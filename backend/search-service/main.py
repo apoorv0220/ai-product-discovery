@@ -24,6 +24,42 @@ import structlog
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Load environment variables from .env file (dual environment support) - MUST happen before imports
+try:
+    from dotenv import load_dotenv
+    import pathlib
+
+    # Detect if running in Docker container
+    in_docker = (
+        pathlib.Path('/.dockerenv').exists() or  # Docker container marker
+        os.getenv('HOSTNAME', '').startswith('ai_discovery_') or  # Container naming pattern
+        pathlib.Path('/app').exists()  # Docker working directory
+    )
+
+    if in_docker:
+        print("[INFO] Running in Docker container - using Docker-provided environment variables")
+    else:
+        # Local development: load from .env files
+        env_paths = [
+            pathlib.Path(__file__).parent.parent.parent / '.env.local',  # Local overrides
+            pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+            pathlib.Path(__file__).parent.parent.parent / '.env.production',  # Production
+        ]
+
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path)
+                print(f"[SUCCESS] Loaded environment variables from {env_path}")
+                env_loaded = True
+                break
+
+        if not env_loaded:
+            print("[INFO] No .env file found - using system environment variables or defaults")
+
+except ImportError:
+    print("[WARNING] python-dotenv not available, skipping .env loading")
+
 from shared.config.settings import SearchServiceSettings
 from shared.database.base import init_database, close_database
 from shared.middleware.correlation_id import CorrelationIDMiddleware
@@ -39,35 +75,6 @@ from fastapi.openapi.utils import get_openapi
 from core.cache import SearchCache
 import redis.asyncio as redis_async
 from shared.config.qdrant import QDRANT_CONFIG
-
-# Load environment variables from .env file (dual environment support)
-try:
-    from dotenv import load_dotenv
-    import pathlib
-
-    # Try multiple .env file locations for dual environment support
-    env_paths = [
-        # Docker env_file loaded automatically (no manual loading needed)
-        pathlib.Path('/app/.env'),  # Docker container .env (if mounted)
-        # Local development paths
-        pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
-        pathlib.Path(__file__).parent.parent.parent / '.env.production',  # Production
-        pathlib.Path(__file__).parent.parent.parent / '.env.local',  # Local overrides
-    ]
-
-    env_loaded = False
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(env_path)
-            print(f"[SUCCESS] Loaded environment variables from {env_path}")
-            env_loaded = True
-            break
-
-    if not env_loaded:
-        print("[INFO] No .env file found - using Docker environment variables or defaults")
-
-except ImportError:
-    print("[WARNING] python-dotenv not available, skipping .env loading")
 
 # Initialize settings first
 settings = SearchServiceSettings()
@@ -405,6 +412,6 @@ if __name__ == "__main__":
         host=settings.API_HOST,
         port=settings.API_PORT,
         log_level=log_level.lower(),
-        reload=settings.DEBUG,
+        reload=False,  # Force no reload for debugging
         workers=1  # Single worker for development (avoids connection pool issues)
     )

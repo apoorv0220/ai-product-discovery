@@ -20,32 +20,34 @@ AsyncSessionLocal = None
 def get_database_url() -> str:
     """Get database URL from environment variables"""
     global DATABASE_URL
-    
+
     if DATABASE_URL:
         return DATABASE_URL
-    
-    # Try different environment variable names
+
+    # Try different environment variable names (prioritize standard ones)
     db_url = (
         os.getenv('DATABASE_URL') or
         os.getenv('POSTGRES_URL') or
         os.getenv('DB_URL') or
         os.getenv('POSTGRESQL_URL')
     )
-    
+
     if not db_url:
-        # Construct from individual components
-        db_host = os.getenv('DB_HOST', 'localhost')
-        db_port = os.getenv('DB_PORT', '5432')
-        db_name = os.getenv('DB_NAME', 'ai_discovery')
-        db_user = os.getenv('DB_USER', 'postgres')
-        db_password = os.getenv('DB_PASSWORD', 'postgres')
-        
+        # Construct from individual components (support both naming conventions)
+        db_host = os.getenv('DB_HOST', os.getenv('POSTGRES_HOST', 'localhost'))
+        db_port = os.getenv('DB_PORT', os.getenv('POSTGRES_PORT', '7010'))  # Changed default to 7010
+        db_name = os.getenv('DB_NAME', os.getenv('POSTGRES_DB', 'ai_discovery'))
+        db_user = os.getenv('DB_USER', os.getenv('POSTGRES_USER'))
+        db_password = os.getenv('DB_PASSWORD', os.getenv('POSTGRES_PASSWORD'))
+        if not db_user or not db_password:
+            raise ValueError("Database credentials not found. Please set DB_USER/DB_PASSWORD or POSTGRES_USER/POSTGRES_PASSWORD environment variables.")
+
         db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-    
+
     # Ensure it's async
     if 'postgresql://' in db_url and 'postgresql+asyncpg://' not in db_url:
         db_url = db_url.replace('postgresql://', 'postgresql+asyncpg://')
-    
+
     DATABASE_URL = db_url
     logger.info(f"Using database URL: {db_url.split('@')[0]}@[HIDDEN]")
     return DATABASE_URL
