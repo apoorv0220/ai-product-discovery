@@ -18,9 +18,16 @@ class SearchQueryBuilder:
         size: int = DEFAULT_SIZE,
         from_: int = 0,
         aggregations: Optional[Dict] = None,
+        merchandising_rules: Optional[List] = None,
     ) -> Dict:
+        import structlog
+        logger = structlog.get_logger()
+        logger.info(f"Building search query: query='{query}', merchant_id={merchant_id}, merchandising_rules={len(merchandising_rules or [])}")
+
         size = min(max(1, size), self.MAX_SIZE)
         from_ = max(0, from_)
+
+        logger.info("Query builder: size and from_ validated")
 
         must_clauses: List[Dict] = [
             {
@@ -70,6 +77,103 @@ class SearchQueryBuilder:
             }
         ]
 
+        logger.info("Query builder: must_clauses built")
+
+        # Add merchandising boost rules if provided
+        if merchandising_rules:
+            logger.info(f"Processing {len(merchandising_rules)} merchandising rules")
+            # Extract boost rules
+            boost_rules = [r for r in merchandising_rules if r.get("rule_type") == "boost"]
+            if boost_rules:
+                logger.info(f"Applying {len(boost_rules)} boost rules")
+                # Apply boosts to the function_score query
+                function_score = must_clauses[0].get("function_score", {})
+                functions = function_score.get("functions", [])
+
+                for rule in boost_rules:
+                    boost_factor = rule.get("action_config", {}).get("boost_factor", 1.0)
+                    boost_factor = min(10.0, max(0.1, float(boost_factor)))
+                    
+                    # Build filter from rule conditions
+                    filter_clause = self._build_merchandising_filter(rule.conditions)
+                    if filter_clause:
+                        functions.append({
+                            "filter": filter_clause,
+                            "weight": boost_factor
+                        })
+                
+                # Update functions list
+                if functions:
+                    must_clauses[0]["function_score"]["functions"] = functions
+                    # Use sum for additive boosts (merchandising + existing)
+                    must_clauses[0]["function_score"]["score_mode"] = "sum"
+
+        logger.info("Query builder: merchandising rules processed")
+
+        filter_clauses = self._build_filters(filters)
+        logger.info("Query builder: filters built")
+
+        sort_clause = self._validate_sort(sort)
+        logger.info("Query builder: sort validated")
+
+        query_dict = {
+            "query": {"bool": {"must": must_clauses, "filter": filter_clauses}},
+            "sort": sort_clause,
+            "size": size,
+            "from": from_,
+        }
+
+        logger.info("Query builder: query_dict constructed")
+
+        try:
+            # Add aggregations if provided
+            if aggregations:
+                query_dict["aggs"] = aggregations
+
+            logger.info(f"Query built successfully, returning dict with keys: {list(query_dict.keys())}")
+            return query_dict
+        except Exception as e:
+            import structlog
+            logger = structlog.get_logger()
+            logger.error(f"Query builder failed at final stage: {e}", exc_info=True)
+            return None
+
+    def _build_merchandising_filter(self, conditions: Dict) -> Optional[Dict]:
+        """
+        Build Elasticsearch filter from merchandising rule conditions
+
+        Args:
+            conditions: Condition dictionary from rule
+
+        Returns:
+            Elasticsearch filter clause or None
+        """
+        condition_type = conditions.get("type")
+        operator = conditions.get("operator")
+        value = conditions.get("value")
+        
+        if condition_type == "product_id":
+            if operator == "equals":
+                return {"term": {"product_id": str(value)}}
+            elif operator == "in":
+                if isinstance(value, list):
+                    return {"terms": {"product_id": [str(v) for v in value]}}
+                else:
+                    return {"term": {"product_id": str(value)}}
+        
+        elif condition_type == "category":
+            if operator == "equals":
+                return {"term": {"categories.keyword": str(value)}}
+            elif operator == "in":
+                if isinstance(value, list):
+                    return {"terms": {"categories.keyword": [str(v) for v in value]}}
+                else:
+                    return {"term": {"categories.keyword": str(value)}}
+        
+        # For query_match, we can't create a static filter (depends on query)
+        # This is handled in the search API by evaluating rules before building query
+        return None
+
         filter_clauses: List[Dict] = [{"term": {"merchant_id": merchant_id}}]
         if filters:
             filter_clauses.extend(self._build_filters(filters))
@@ -83,11 +187,18 @@ class SearchQueryBuilder:
             "from": from_,
         }
         
-        # Add aggregations if provided
-        if aggregations:
-            query_dict["aggs"] = aggregations
-        
-        return query_dict
+        try:
+            # Add aggregations if provided
+            if aggregations:
+                query_dict["aggs"] = aggregations
+
+            logger.info(f"Query built successfully, returning dict with keys: {list(query_dict.keys())}")
+            return query_dict
+        except Exception as e:
+            import structlog
+            logger = structlog.get_logger()
+            logger.error(f"Query builder failed: {e}", exc_info=True)
+            return None
 
     def _validate_sort(self, sort: Optional[str]) -> List[Dict]:
         valid_sorts = {

@@ -107,21 +107,33 @@ def reciprocal_rank_fusion(
     
     # Extract product IDs and scores from keyword results
     for rank, result in enumerate(keyword_results, start=1):
+        if not result or not isinstance(result, dict):
+            continue
         product_id = str(result.get("product_id", ""))
-        if product_id:
+        if product_id and result.get("product_id"):  # Extra validation
             # RRF score = 1 / (k + rank)
             keyword_scores[product_id] = keyword_weight / (RRF_K + rank)
-            # Store full result for later
-            keyword_results_map[product_id] = result
-    
+            # Store full result for later (ensure it's a valid dict)
+            if isinstance(result, dict) and "product_id" in result:
+                try:
+                    keyword_results_map[product_id] = dict(result)  # Create a copy to be safe
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Failed to store keyword result for product {product_id}: {e}")
+
     # Extract product IDs and scores from semantic results
     for rank, result in enumerate(semantic_results, start=1):
+        if not result or not isinstance(result, dict):
+            continue
         product_id = str(result.get("product_id", ""))
-        if product_id:
+        if product_id and result.get("product_id"):  # Extra validation
             # RRF score = 1 / (k + rank)
             semantic_scores[product_id] = semantic_weight / (RRF_K + rank)
-            # Store full result for later
-            semantic_results_map[product_id] = result
+            # Store full result for later (ensure it's a valid dict)
+            if isinstance(result, dict) and "product_id" in result:
+                try:
+                    semantic_results_map[product_id] = dict(result)  # Create a copy to be safe
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Failed to store semantic result for product {product_id}: {e}")
     
     # Combine scores
     combined_scores = {}
@@ -150,11 +162,35 @@ def reciprocal_rank_fusion(
         seen_ids.add(product_id)
         
         # Prefer keyword result if available (has more fields), otherwise use semantic
+        result = None
+
+        # Try keyword result first
         if product_id in keyword_results_map:
-            result = keyword_results_map[product_id].copy()
-        elif product_id in semantic_results_map:
-            result = semantic_results_map[product_id].copy()
-        else:
+            keyword_result = keyword_results_map[product_id]
+            if (keyword_result is not None and
+                isinstance(keyword_result, dict) and
+                keyword_result and
+                keyword_result.get("product_id")):
+                try:
+                    result = keyword_result.copy()
+                except (AttributeError, TypeError) as e:
+                    logger.warning(f"Failed to copy keyword result for product {product_id}: {e}")
+                    result = None
+
+        # Fall back to semantic result
+        if not result and product_id in semantic_results_map:
+            semantic_result = semantic_results_map[product_id]
+            if (semantic_result is not None and
+                isinstance(semantic_result, dict) and
+                semantic_result and
+                semantic_result.get("product_id")):
+                try:
+                    result = semantic_result.copy()
+                except (AttributeError, TypeError) as e:
+                    logger.warning(f"Failed to copy semantic result for product {product_id}: {e}")
+                    result = None
+
+        if not result:
             continue
         
         # Add combined score
@@ -231,9 +267,13 @@ async def hybrid_search(
                       error=str(semantic_results_data))
         semantic_results_data = {"results": []}
     
-    # Extract results
-    keyword_results = keyword_results_data.get("results", [])
-    semantic_results = semantic_results_data.get("results", [])
+    # Extract results with validation
+    keyword_results = keyword_results_data.get("results", []) if isinstance(keyword_results_data, dict) else []
+    semantic_results = semantic_results_data.get("results", []) if isinstance(semantic_results_data, dict) else []
+
+    # Ensure results are lists and filter out None/invalid items
+    keyword_results = [r for r in keyword_results if r is not None and isinstance(r, dict)]
+    semantic_results = [r for r in semantic_results if r is not None and isinstance(r, dict)]
     
     # Merge using RRF
     merged_results = reciprocal_rank_fusion(

@@ -76,6 +76,10 @@ class SearchMetadata(BaseModel):
     personalization_profile_used: bool = Field(default=False, description="Whether user profile was found and used")
     personalization_processing_time: float = Field(default=0.0, ge=0.0, description="Time spent on personalization")
 
+    # Merchandising metadata
+    merchandising_applied: bool = Field(default=False, description="Whether merchandising rules were applied")
+    merchandising_rules_applied: int = Field(default=0, ge=0, description="Number of merchandising rules applied")
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -165,6 +169,9 @@ class SearchRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID for anonymous user personalization")
     user_context: Optional[Dict[str, Any]] = Field(None, description="Platform-specific user context data")
     personalize: bool = Field(False, description="Enable/disable personalization")
+
+    # Search type for debugging
+    search_type: str = Field(default="hybrid", description="Search type: 'keyword', 'semantic', or 'hybrid'")
 
     @validator('filters', pre=True)
     def normalize_filters(cls, v):

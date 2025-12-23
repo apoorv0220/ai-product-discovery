@@ -377,6 +377,10 @@ app.include_router(index.router, prefix="/api/v1/index", tags=["indexing"])
 from api import tracking
 app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 
+# Include merchandising router
+from api import merchandising
+app.include_router(merchandising.router, prefix="/api/v1/merchandising/rules", tags=["merchandising"])
+
 
 @app.get("/")
 async def root():

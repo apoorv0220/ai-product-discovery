@@ -30,6 +30,9 @@ from shared.models.personalization import (  # noqa: F401
     PersonalizedSearchWeights,
 )
 
+# Import merchandising models
+from shared.models.merchandising import MerchandisingRule  # noqa: F401
+
 __all__ = [
     "Base",
     # Core models
@@ -46,5 +49,7 @@ __all__ = [
     "UserProductViews",
     "UserSearchClicks",
     "PersonalizedSearchWeights",
+    # Merchandising models
+    "MerchandisingRule",
 ]
 

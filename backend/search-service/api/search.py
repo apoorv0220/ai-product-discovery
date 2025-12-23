@@ -28,6 +28,7 @@ from schemas.search import (
     SearchErrorResponse
 )
 from core.personalized_search import personalized_search_engine
+from core.merchandising_engine import MerchandisingRulesEngine
 
 logger = structlog.get_logger()
 
@@ -165,9 +166,11 @@ async def _perform_keyword_search(
     filters: Optional[Dict],
     es_client,
     search_cache,
-    include_facets: bool = True
+    include_facets: bool = True,
+    merchandising_rules: Optional[List] = None
 ) -> Dict[str, Any]:
     """Perform keyword search using Elasticsearch"""
+    logger.info(f"Starting keyword search: query='{query}', merchant_id={merchant_id}, limit={limit}, offset={offset}")
     from core.query_builder import SearchQueryBuilder
     
     # Build aggregations for facets if requested
@@ -185,6 +188,7 @@ async def _perform_keyword_search(
         size=limit,
         from_=offset,
         aggregations=aggregations,
+        merchandising_rules=merchandising_rules,
     )
     
     # Check cache
@@ -220,7 +224,17 @@ async def _perform_keyword_search(
     
     formatted = []
     for h in hits:
+        if not h or not isinstance(h, dict):
+            continue
+
         src = h.get("_source", {})
+        if not src or not isinstance(src, dict):
+            continue
+
+        product_id = str(src.get("product_id", ""))
+        if not product_id:
+            continue
+
         category_names = src.get("categories") or []
         category_ids = src.get("category_ids") or []
 
@@ -245,7 +259,7 @@ async def _perform_keyword_search(
         categories_response = categories_structured if categories_structured else category_names
 
         formatted.append({
-            "product_id": str(src.get("product_id", "")),
+            "product_id": product_id,
             "name": src.get("name", ""),
             "title": src.get("name", ""),
             "score": float(h.get("_score", 0.0)),
@@ -330,20 +344,29 @@ async def _perform_semantic_search(
         if product_ids:
             es_metadata_query = {
                 "query": {"terms": {"product_id": product_ids}},
-                "_source": ["categories", "category_ids", "attributes", "brand", "name", "description", "short_description", "price", "special_price", "image_url", "url"]
+                "_source": ["product_id", "categories", "category_ids", "attributes", "brand", "name", "description", "short_description", "price", "special_price", "image_url", "url"]
             }
             try:
                 es_metadata_response = await es_client.search(
-                    index=f"discovery_products_m{merchant_id}",
-                    body=es_metadata_query,
+                    merchant_id=merchant_id,
+                    query=es_metadata_query,
+                    from_=0,
                     size=len(product_ids)
                 )
-                es_metadata_map = {str(h["_source"]["product_id"]): h["_source"] for h in es_metadata_response["hits"]["hits"]}
+                es_metadata_map = {}
+                for h in es_metadata_response.get("hits", {}).get("hits", []):
+                    source = h.get("_source", {})
+                    product_id = source.get("product_id")
+                    if product_id:
+                        es_metadata_map[str(product_id)] = source
 
                 # Merge full metadata into semantic results
                 for i, result in enumerate(search_results):
                     full_metadata = es_metadata_map.get(str(result.get("product_id")))
                     if full_metadata:
+                        # Initialize metadata if it doesn't exist
+                        if "metadata" not in result:
+                            result["metadata"] = {}
                         # Update existing metadata with more comprehensive data from ES
                         # Note: ES stores categories as "categories" field (which contains category names)
                         result["metadata"].update({
@@ -498,11 +521,17 @@ async def search_products(search_request: SearchRequest, request: Request):
         user_id_used = search_request.user_id
         session_id_used = search_request.session_id
 
-        # Use hybrid search by default (best results)
-        # If semantic services not available, fallback to keyword
-        search_mode = "hybrid"
-        if not embedding_service or not qdrant_manager:
-            logger.warning("Semantic search services not available, falling back to keyword search")
+        # Use search_type parameter, default to hybrid
+        search_mode = search_request.search_type
+        if search_mode not in ["keyword", "semantic", "hybrid"]:
+            search_mode = "hybrid"
+
+        # Validate service availability for requested search type
+        if search_mode in ["semantic", "hybrid"] and (not embedding_service or not qdrant_manager):
+            logger.warning(f"Semantic search services not available for {search_mode}, falling back to keyword search")
+            search_mode = "keyword"
+        elif search_mode == "hybrid" and (not embedding_service or not qdrant_manager):
+            logger.warning("Semantic search services not available for hybrid, falling back to keyword search")
             search_mode = "keyword"
 
         # Default hybrid weights
@@ -511,6 +540,46 @@ async def search_products(search_request: SearchRequest, request: Request):
 
         # Extract query attributes for score calibration (Hybrid+ Scoring Tweaks)
         query_attributes = _extract_query_attributes(search_request.query)
+        
+        # Load and evaluate merchandising rules
+        merchandising_applied = False
+        rules_applied_count = 0
+        merchandising_engine = None
+        matched_rules = {"boost": [], "pin": [], "hide": []}
+        
+        try:
+            redis_client = getattr(request.app.state, "search_cache", None)
+            if redis_client:
+                # Get Redis client from search_cache if available
+                redis_client = redis_client.redis if hasattr(redis_client, "redis") else None
+            
+            merchandising_engine = MerchandisingRulesEngine(redis_client=redis_client)
+            active_rules = await merchandising_engine.load_active_rules(merchant_id)
+            
+            if active_rules:
+                # Build context for rule evaluation
+                context = {
+                    "merchant_id": merchant_id,
+                    "categories": search_request.filters.get("categories", []) if search_request.filters else [],
+                }
+                
+                # Evaluate rules
+                matched_rules = merchandising_engine.evaluate_rules(
+                    search_request.query,
+                    context,
+                    active_rules
+                )
+                rules_applied_count = sum(len(rules) for rules in matched_rules.values())
+                merchandising_applied = rules_applied_count > 0
+                
+                logger.info(
+                    f"Merchandising rules evaluated: {rules_applied_count} matched "
+                    f"(boost={len(matched_rules['boost'])}, "
+                    f"pin={len(matched_rules['pin'])}, "
+                    f"hide={len(matched_rules['hide'])})"
+                )
+        except Exception as e:
+            logger.warning(f"Merchandising rules evaluation failed, continuing without rules", error=str(e))
         
         # Perform search based on available services
         facets_dict = None
@@ -523,7 +592,8 @@ async def search_products(search_request: SearchRequest, request: Request):
                 search_request.filters,
                 es_client,
                 search_cache,
-                include_facets=True
+                include_facets=True,
+                merchandising_rules=matched_rules.get("boost", [])
             )
             results = result_data["results"]
             total = result_data["total"]
@@ -554,7 +624,7 @@ async def search_products(search_request: SearchRequest, request: Request):
             
             # Define search functions
             async def keyword_search_func(q, m_id, l, o, f):
-                return await _perform_keyword_search(q, m_id, l, o, f, es_client, search_cache, include_facets=True)
+                return await _perform_keyword_search(q, m_id, l, o, f, es_client, search_cache, include_facets=True, merchandising_rules=matched_rules.get("boost", []))
             
             async def semantic_search_func(q, m_id, l, o, f):
                 return await _perform_semantic_search(q, m_id, l, o, f, embedding_service, qdrant_manager, es_client, search_cache, include_facets=False, query_attributes=query_attributes)
@@ -583,7 +653,8 @@ async def search_products(search_request: SearchRequest, request: Request):
                 search_request.filters,
                 es_client,
                 search_cache,
-                include_facets=True
+                include_facets=True,
+                merchandising_rules=matched_rules.get("boost", [])
             )
             facets_dict = keyword_result.get("facets")
 
@@ -598,6 +669,41 @@ async def search_products(search_request: SearchRequest, request: Request):
                     metadata=r.get("metadata", {})
                 )
             )
+        
+        # Apply merchandising rules: pinning and hiding (boosts already applied in query)
+        if merchandising_engine and merchandising_applied:
+            try:
+                # Convert to dict format for merchandising engine
+                results_dict = [r.dict() for r in formatted]
+                
+                # Apply pinning
+                if matched_rules.get("pin"):
+                    results_dict = merchandising_engine.apply_pinning(
+                        results_dict,
+                        matched_rules["pin"]
+                    )
+                
+                # Apply hiding
+                if matched_rules.get("hide"):
+                    results_dict = merchandising_engine.apply_hiding(
+                        results_dict,
+                        matched_rules["hide"]
+                    )
+                
+                # Convert back to SearchResultItem
+                formatted = [
+                    SearchResultItem(
+                        product_id=str(r["product_id"]),
+                        title=r.get("name", r.get("title", "")),
+                        score=r.get("hybrid_score", r.get("score", 0.0)),
+                        metadata=r.get("metadata", {})
+                    )
+                    for r in results_dict
+                ]
+                
+                logger.info(f"Applied merchandising: pin={len(matched_rules.get('pin', []))}, hide={len(matched_rules.get('hide', []))}")
+            except Exception as e:
+                logger.warning(f"Merchandising application failed, continuing with original results", error=str(e))
 
         # Apply personalization if enabled and user context provided
         if (search_request.personalize and
@@ -632,7 +738,7 @@ async def search_products(search_request: SearchRequest, request: Request):
         
         took = time.time() - start_time
 
-        # Create search metadata with personalization info
+        # Create search metadata with personalization and merchandising info
         search_metadata = SearchMetadata(
             nlp_enabled=True,  # Assuming NLP is enabled
             semantic_search=(search_mode in ["semantic", "hybrid"]),
@@ -641,6 +747,8 @@ async def search_products(search_request: SearchRequest, request: Request):
             session_id=session_id_used,
             personalization_profile_used=personalization_profile_used,
             personalization_processing_time=personalization_processing_time or 0.0,
+            merchandising_applied=merchandising_applied,
+            merchandising_rules_applied=rules_applied_count,
             processing_time=took
         )
 
@@ -662,14 +770,16 @@ async def search_products(search_request: SearchRequest, request: Request):
             "cache_status": cache_status,
             "zero_results": total == 0,
             "merchant_id": merchant_id,
+            "merchandising_applied": merchandising_applied,
+            "merchandising_rules_applied": rules_applied_count,
         })
 
         return response_dict
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Search failed", error=str(e))
-        raise HTTPException(status_code=500, detail={"error": "Search failed"})
+        logger.error("Search failed", error=str(e), search_mode=search_mode, exc_info=True)
+        raise HTTPException(status_code=500, detail={"error": "Search failed", "search_mode": search_mode})
 
 
 @router.get("/")
