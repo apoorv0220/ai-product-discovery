@@ -727,6 +727,7 @@ async def search_products(search_request: SearchRequest, request: Request):
             try:
                 # Apply pinning
                 if matched_rules.get("pin"):
+                    logger.info(f"Applying {len(matched_rules['pin'])} pin rules to {len(results_dict)} results")
                     results_dict = merchandising_engine.apply_pinning(
                         results_dict,
                         matched_rules["pin"]
@@ -734,6 +735,7 @@ async def search_products(search_request: SearchRequest, request: Request):
                 
                 # Apply hiding
                 if matched_rules.get("hide"):
+                    logger.info(f"Applying {len(matched_rules['hide'])} hide rules")
                     results_dict = merchandising_engine.apply_hiding(
                         results_dict,
                         matched_rules["hide"]
@@ -741,7 +743,14 @@ async def search_products(search_request: SearchRequest, request: Request):
                 
                 logger.info(f"Applied merchandising: pin={len(matched_rules.get('pin', []))}, hide={len(matched_rules.get('hide', []))}")
             except Exception as e:
-                logger.warning(f"Merchandising application failed, continuing with original results", error=str(e))
+                error_msg = str(e) if e else repr(e)
+                error_type = type(e).__name__
+                logger.warning(
+                    f"Merchandising application failed, continuing with original results",
+                    error=error_msg,
+                    error_type=error_type,
+                    exc_info=True
+                )
         
         # Convert back to SearchResultItem for response
         formatted = [

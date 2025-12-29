@@ -369,66 +369,88 @@ class MerchandisingRulesEngine:
         if not pin_rules:
             return results
         
-        # Sort pin rules by position (ascending)
-        pin_rules = sorted(
-            pin_rules,
-            key=lambda r: r.get('action_config', {}).get("position", 999)
-        )
-        
-        # Create mapping: position -> product_id
-        pinned_products = {}
-        for rule in pin_rules:
-            position = rule.get('action_config', {}).get("position", 1)
-            product_id = str(rule.get('action_config', {}).get("product_id", ""))
-            if product_id and position not in pinned_products:
-                pinned_products[position] = product_id
-        
-        if not pinned_products:
-            return results
-        
-        # Separate pinned and non-pinned results
-        pinned_results = []
-        non_pinned_results = []
-        pinned_ids = set(pinned_products.values())
-        
-        for result in results:
-            product_id = str(result.get("product_id", ""))
-            if product_id in pinned_ids:
-                pinned_results.append((product_id, result))
-            else:
-                non_pinned_results.append(result)
-        
-        # Build final result list
-        final_results = []
-        max_position = max(pinned_products.keys()) if pinned_products else 0
-        
-        for pos in range(1, max_position + 1):
-            if pos in pinned_products:
-                # Find and insert pinned product
-                product_id = pinned_products[pos]
-                pinned_item = next(
-                    (r for pid, r in pinned_results if pid == product_id),
-                    None
-                )
-                if pinned_item:
-                    final_results.append(pinned_item[1])
-                # Fill with non-pinned if no pinned product found
-                elif non_pinned_results:
-                    final_results.append(non_pinned_results.pop(0))
-            else:
-                # Fill with non-pinned
-                if non_pinned_results:
-                    final_results.append(non_pinned_results.pop(0))
-        
-        # Add remaining non-pinned results
-        final_results.extend(non_pinned_results)
-        
-        logger.info(
-            f"Applied pinning: {len(pinned_products)} positions, "
-            f"pinned {len([r for r in final_results if str(r.get('product_id', '')) in pinned_ids])} products"
-        )
-        
-        return final_results
+        try:
+            # Sort pin rules by position (ascending)
+            pin_rules = sorted(
+                pin_rules,
+                key=lambda r: int(r.get('action_config', {}).get("position", 999))
+            )
+            
+            # Create mapping: position -> product_id (ensure position is int)
+            pinned_products = {}
+            for rule in pin_rules:
+                action_config = rule.get('action_config', {})
+                position = int(action_config.get("position", 1))
+                product_id = str(action_config.get("product_id", ""))
+                if product_id and position > 0 and position not in pinned_products:
+                    pinned_products[position] = product_id
+                    logger.debug(f"Pin rule: product_id={product_id}, position={position}")
+            
+            if not pinned_products:
+                logger.warning("No valid pinned products found in rules")
+                return results
+            
+            # Separate pinned and non-pinned results
+            pinned_results = []
+            non_pinned_results = []
+            pinned_ids = set(str(pid) for pid in pinned_products.values())
+            
+            logger.debug(f"Looking for pinned product IDs: {pinned_ids}")
+            logger.debug(f"Total results to process: {len(results)}")
+            
+            for result in results:
+                product_id = str(result.get("product_id", ""))
+                if product_id in pinned_ids:
+                    pinned_results.append((product_id, result))
+                    logger.debug(f"Found pinned product: {product_id}")
+                else:
+                    non_pinned_results.append(result)
+            
+            logger.info(f"Found {len(pinned_results)} pinned products out of {len(results)} total results")
+            
+            # Build final result list
+            final_results = []
+            max_position = max(pinned_products.keys()) if pinned_products else 0
+            
+            if max_position == 0:
+                logger.warning("Max position is 0, returning original results")
+                return results
+            
+            for pos in range(1, max_position + 1):
+                if pos in pinned_products:
+                    # Find and insert pinned product
+                    product_id = str(pinned_products[pos])
+                    pinned_item = next(
+                        (r for pid, r in pinned_results if str(pid) == product_id),
+                        None
+                    )
+                    if pinned_item:
+                        final_results.append(pinned_item[1])
+                        logger.debug(f"Pinned product {product_id} at position {pos}")
+                    else:
+                        # Product not found in results, fill with non-pinned
+                        logger.warning(f"Pinned product {product_id} not found in results, filling position {pos} with next available")
+                        if non_pinned_results:
+                            final_results.append(non_pinned_results.pop(0))
+                else:
+                    # Fill with non-pinned
+                    if non_pinned_results:
+                        final_results.append(non_pinned_results.pop(0))
+            
+            # Add remaining non-pinned results
+            final_results.extend(non_pinned_results)
+            
+            pinned_count = len([r for r in final_results if str(r.get('product_id', '')) in pinned_ids])
+            logger.info(
+                f"Applied pinning: {len(pinned_products)} positions, "
+                f"pinned {pinned_count} products, final result count: {len(final_results)}"
+            )
+            
+            return final_results
+            
+        except Exception as e:
+            logger.error(f"Error in apply_pinning: {str(e)}", exc_info=True)
+            raise
     
     def apply_hiding(
         self,
