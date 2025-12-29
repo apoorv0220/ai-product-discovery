@@ -372,7 +372,7 @@ class MerchandisingRulesEngine:
         # Sort pin rules by position (ascending)
         pin_rules = sorted(
             pin_rules,
-            key=lambda r: r.action_config.get("position", 999)
+            key=lambda r: r.get('action_config', {}).get("position", 999)
         )
         
         # Create mapping: position -> product_id

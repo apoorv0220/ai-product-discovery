@@ -679,24 +679,52 @@ async def search_products(search_request: SearchRequest, request: Request):
             )
             facets_dict = keyword_result.get("facets")
 
-        # Format results to SearchResultItem model
-        formatted = []
+        # Format results to dict format for processing
+        results_dict = []
         for r in results:
-            formatted.append(
-                SearchResultItem(
-                    product_id=str(r["product_id"]),
-                    title=r.get("name", r.get("title", "")),
-                    score=r.get("hybrid_score", r.get("score", 0.0)),
-                    metadata=r.get("metadata", {})
-                )
-            )
+            results_dict.append({
+                "product_id": str(r["product_id"]),
+                "id": str(r["product_id"]),  # Add id field for compatibility
+                "name": r.get("name", r.get("title", "")),
+                "title": r.get("name", r.get("title", "")),
+                "score": r.get("hybrid_score", r.get("score", 0.0)),
+                "metadata": r.get("metadata", {})
+            })
         
-        # Apply merchandising rules: pinning and hiding (boosts already applied in query)
+        # Apply personalization if enabled and user context provided (BEFORE merchandising)
+        if (search_request.personalize and
+            (search_request.user_id or search_request.session_id)):
+            personalization_start_time = time.time()
+            try:
+                logger.info("Applying personalization",
+                          user_id=search_request.user_id,
+                          session_id=search_request.session_id,
+                          result_count=len(results_dict))
+
+                # Apply personalized ranking (returns dicts)
+                results_dict = await personalized_search_engine.apply_personalized_ranking(
+                    results_dict,
+                    user_id=search_request.user_id,
+                    session_id=search_request.session_id,
+                    user_context=search_request.user_context
+                )
+
+                personalization_applied = True
+                personalization_profile_used = len(results_dict) > 0
+
+                personalization_processing_time = time.time() - personalization_start_time
+                logger.info("Personalization applied successfully",
+                          processing_time=personalization_processing_time,
+                          profile_used=personalization_profile_used)
+
+            except Exception as e:
+                logger.warning("Personalization failed, continuing with original results",
+                            error=str(e))
+                personalization_processing_time = time.time() - (personalization_start_time or time.time())
+        
+        # Apply merchandising rules: pinning and hiding (AFTER personalization, so pinning takes precedence)
         if merchandising_engine and merchandising_applied:
             try:
-                # Convert to dict format for merchandising engine
-                results_dict = [r.dict() for r in formatted]
-                
                 # Apply pinning
                 if matched_rules.get("pin"):
                     results_dict = merchandising_engine.apply_pinning(
@@ -711,51 +739,20 @@ async def search_products(search_request: SearchRequest, request: Request):
                         matched_rules["hide"]
                     )
                 
-                # Convert back to SearchResultItem
-                formatted = [
-                    SearchResultItem(
-                        product_id=str(r["product_id"]),
-                        title=r.get("name", r.get("title", "")),
-                        score=r.get("hybrid_score", r.get("score", 0.0)),
-                        metadata=r.get("metadata", {})
-                    )
-                    for r in results_dict
-                ]
-                
                 logger.info(f"Applied merchandising: pin={len(matched_rules.get('pin', []))}, hide={len(matched_rules.get('hide', []))}")
             except Exception as e:
                 logger.warning(f"Merchandising application failed, continuing with original results", error=str(e))
-
-        # Apply personalization if enabled and user context provided
-        if (search_request.personalize and
-            (search_request.user_id or search_request.session_id)):
-            personalization_start_time = time.time()
-            try:
-                logger.info("Applying personalization",
-                          user_id=search_request.user_id,
-                          session_id=search_request.session_id,
-                          result_count=len(formatted))
-
-                # Apply personalized ranking
-                formatted = await personalized_search_engine.apply_personalized_ranking(
-                    formatted,
-                    user_id=search_request.user_id,
-                    session_id=search_request.session_id,
-                    user_context=search_request.user_context
-                )
-
-                personalization_applied = True
-                personalization_profile_used = len(formatted) > 0
-
-                personalization_processing_time = time.time() - personalization_start_time
-                logger.info("Personalization applied successfully",
-                          processing_time=personalization_processing_time,
-                          profile_used=personalization_profile_used)
-
-            except Exception as e:
-                logger.warning("Personalization failed, continuing with original results",
-                            error=str(e))
-                personalization_processing_time = time.time() - (personalization_start_time or time.time())
+        
+        # Convert back to SearchResultItem for response
+        formatted = [
+            SearchResultItem(
+                product_id=str(r["product_id"]),
+                title=r.get("name", r.get("title", "")),
+                score=r.get("final_score", r.get("hybrid_score", r.get("score", 0.0))),
+                metadata=r.get("metadata", {})
+            )
+            for r in results_dict
+        ]
         
         took = time.time() - start_time
 

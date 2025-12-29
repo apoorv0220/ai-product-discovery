@@ -225,12 +225,33 @@ class PersonalizedSearchEngine:
             if not search_results:
                 return search_results
             
+            # Convert Pydantic models to dicts if needed
+            results_as_dicts = []
+            for result in search_results:
+                if hasattr(result, 'dict'):
+                    # Pydantic model - convert to dict
+                    result_dict = result.dict()
+                    # Map Pydantic model fields to expected dict keys
+                    if 'product_id' not in result_dict and hasattr(result, 'product_id'):
+                        result_dict['product_id'] = str(result.product_id)
+                    if 'id' not in result_dict and 'product_id' in result_dict:
+                        result_dict['id'] = result_dict['product_id']
+                    if 'title' in result_dict and 'name' not in result_dict:
+                        result_dict['name'] = result_dict['title']
+                    results_as_dicts.append(result_dict)
+                elif isinstance(result, dict):
+                    # Already a dict
+                    results_as_dicts.append(result.copy())
+                else:
+                    # Fallback: try to convert to dict
+                    results_as_dicts.append(dict(result) if hasattr(result, '__dict__') else result)
+            
             # Get product IDs from results
-            product_ids = [str(result.get('id', result.get('product_id', ''))) for result in search_results]
+            product_ids = [str(result.get('id', result.get('product_id', ''))) for result in results_as_dicts]
             product_ids = [pid for pid in product_ids if pid]  # Remove empty IDs
             
             if not product_ids:
-                return search_results
+                return results_as_dicts
             
             # Get personalized weights
             weights = await self.get_personalized_search_weights(user_id, session_id, product_ids)
@@ -242,7 +263,7 @@ class PersonalizedSearchEngine:
             if not weights:
                 # No personalization data, return original results
                 logger.info(f"⚠️ No personalization weights found for session: {session_id}")
-                return search_results
+                return results_as_dicts
 
             # Process user context for enhanced personalization
             context_adjustments = self._process_user_context(user_context, product_ids)
@@ -250,7 +271,7 @@ class PersonalizedSearchEngine:
 
             # Apply weights to results
             personalized_results = []
-            for result in search_results:
+            for result in results_as_dicts:
                 result_copy = result.copy()
                 product_id = str(result.get('id', result.get('product_id', '')))
                 
@@ -290,7 +311,7 @@ class PersonalizedSearchEngine:
             if query:
                 await self.track_search_query(query, user_id, session_id, personalized_results)
             
-            logger.info(f"Applied personalized ranking to {len(search_results)} results")
+            logger.info(f"Applied personalized ranking to {len(results_as_dicts)} results")
             return personalized_results
             
         except Exception as e:
