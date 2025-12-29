@@ -425,7 +425,7 @@ class MerchandisingRulesEngine:
                         None
                     )
                     if pinned_item:
-                        final_results.append(pinned_item[1])
+                        final_results.append(pinned_item)
                         logger.debug(f"Pinned product {product_id} at position {pos}")
                     else:
                         # Product not found in results, fill with non-pinned
