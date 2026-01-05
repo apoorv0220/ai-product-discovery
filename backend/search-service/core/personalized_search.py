@@ -15,9 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import sessionmaker
 
-from shared.models import (
-    UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
-)
+# Note: UserSearchHistory, UserProductViews, UserSearchClicks tables have been replaced
+# with analytics_events table. Personalization now queries analytics service data.
+from shared.models import PersonalizedSearchWeights
+from sqlalchemy import select, func, and_, or_, desc, text
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+import os
 from core.database import get_async_session
 
 logger = logging.getLogger(__name__)
@@ -25,20 +28,25 @@ logger = logging.getLogger(__name__)
 class PersonalizedSearchEngine:
     """
     Personalized search engine that boosts products based on user behavior
-    
+
     Key features:
-    - Tracks user product views and search history
+    - Tracks user product views and search history via analytics_events
     - Boosts products user has viewed recently
     - Considers session-based behavior for anonymous users
     - Applies decay factor for older interactions
     """
-    
+
     def __init__(self):
         self.view_boost_factor = 2.0  # Boost for viewed products
         self.recent_view_boost = 3.0  # Extra boost for recent views (< 1 day)
         self.search_click_boost = 1.5  # Boost for products clicked from search
         self.decay_days = 7  # Days after which boost starts decaying
         self.max_history_days = 30  # Maximum days to consider for personalization
+
+        # Analytics database connection (same as search DB in development)
+        from core.database import get_async_session
+        # For now, use same database - analytics_events table is in same DB
+        self.get_analytics_session = get_async_session
         
     async def track_product_view(
         self,
@@ -58,45 +66,21 @@ class PersonalizedSearchEngine:
         user_agent: str = None,  # Browser/device user agent
         referrer: str = None  # Referring page URL
     ) -> bool:
-        """Track a product view for personalization"""
-        try:
-            async with get_async_session() as session:
-                # Create product view record
-                view_record = UserProductViews(
-                    merchant_id=merchant_id,
-                    user_id=user_id,
-                    session_id=session_id or f"anon_{datetime.now().timestamp()}",
-                    product_id=product_id,
-                    product_name=product_name,
-                    product_sku=product_sku,
-                    categories=json.dumps(categories or []),
-                    category_ids=json.dumps(category_ids or []),
-                    view_duration=view_duration,
-                    came_from_search=came_from_search,
-                    search_query=search_query,
-                    platform=platform or None,
-                    device_type=device_type or None,
-                    user_agent=user_agent or None,
-                    referrer=referrer or None,
-                    created_at=datetime.utcnow()
-                )
-                
-                session.add(view_record)
-                
-                # Update or create personalized weight
-                await self._update_personalized_weight(
-                    session, merchant_id, user_id, session_id, product_id,
-                    interaction_type="view", boost_factor=self.view_boost_factor
-                )
-                
-                await session.commit()
-                
-                logger.info(f"Tracked product view: {product_id} for user/session: {user_id or session_id}")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error tracking product view: {str(e)}")
-            return False
+        """
+        DEPRECATED: Product view tracking has been moved to analytics service.
+
+        This method now logs the event but doesn't store it locally.
+        Use analytics service API: POST /api/v1/tracking/product-view
+        """
+        logger.info(
+            "Product view tracking called (deprecated)",
+            product_id=product_id,
+            user_id=user_id,
+            session_id=session_id,
+            note="Use analytics service API instead"
+        )
+        # Event is now handled by analytics service via Redis pub/sub or direct API calls
+        return True
     
     async def track_search_query(
         self,
@@ -106,28 +90,21 @@ class PersonalizedSearchEngine:
         session_id: str = None,
         results: List[Dict] = None
     ) -> bool:
-        """Track a search query"""
-        try:
-            async with get_async_session() as session:
-                # Create search history record
-                search_record = UserSearchHistory(
-                    merchant_id=merchant_id,
-                    user_id=user_id,
-                    session_id=session_id or f"anon_{datetime.now().timestamp()}",
-                    query=query.lower().strip(),
-                    results_count=len(results or []),
-                    created_at=datetime.utcnow()
-                )
-                
-                session.add(search_record)
-                await session.commit()
-                
-                logger.info(f"Tracked search query: '{query}' for user/session: {user_id or session_id}")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error tracking search query: {str(e)}")
-            return False
+        """
+        DEPRECATED: Search query tracking has been moved to analytics service.
+
+        This method now logs the event but doesn't store it locally.
+        Search queries are auto-tracked via Redis pub/sub in search service.
+        """
+        logger.info(
+            "Search query tracking called (deprecated)",
+            query=query,
+            user_id=user_id,
+            session_id=session_id,
+            note="Search queries are auto-tracked via Redis pub/sub"
+        )
+        # Event is now handled by event_publisher in search service -> analytics service
+        return True
     
     async def track_search_click(
         self,
@@ -139,37 +116,22 @@ class PersonalizedSearchEngine:
         user_id: Optional[str] = None,
         session_id: str = None
     ) -> bool:
-        """Track a click on search result"""
-        try:
-            async with get_async_session() as session:
-                # Create search click record
-                click_record = UserSearchClicks(
-                    merchant_id=merchant_id,
-                    user_id=user_id,
-                    session_id=session_id or f"anon_{datetime.now().timestamp()}",
-                    search_query=search_query.lower().strip(),
-                    clicked_product_id=clicked_product_id,
-                    clicked_product_name=clicked_product_name,
-                    position_in_results=position_in_results,
-                    created_at=datetime.utcnow()
-                )
-                
-                session.add(click_record)
-                
-                # Update personalized weight with search click boost
-                await self._update_personalized_weight(
-                    session, merchant_id, user_id, session_id, clicked_product_id,
-                    interaction_type="search_click", boost_factor=self.search_click_boost
-                )
-                
-                await session.commit()
-                
-                logger.info(f"Tracked search click: {clicked_product_id} for query: '{search_query}'")
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error tracking search click: {str(e)}")
-            return False
+        """
+        DEPRECATED: Search click tracking has been moved to analytics service.
+
+        This method now logs the event but doesn't store it locally.
+        Use analytics service API: POST /api/v1/tracking/search-click
+        """
+        logger.info(
+            "Search click tracking called (deprecated)",
+            search_query=search_query,
+            clicked_product_id=clicked_product_id,
+            user_id=user_id,
+            session_id=session_id,
+            note="Use analytics service API instead"
+        )
+        # Event is now handled by analytics service via direct API calls
+        return True
     
     async def get_personalized_search_weights(
         self, 
@@ -324,33 +286,44 @@ class PersonalizedSearchEngine:
         session_id: str = None,
         limit: int = 50
     ) -> List[Dict]:
-        """Get user's recent search history"""
+        """Get user's recent search history from analytics_events"""
         try:
-            async with get_async_session() as session:
-                query = select(UserSearchHistory).order_by(desc(UserSearchHistory.created_at)).limit(limit)
-                
+            async with self.get_analytics_session() as session:
+                # Query analytics_events for search_query events
+                query = (
+                    select(
+                        text("properties->>'query' as query"),
+                        text("properties->>'results_count' as results_count"),
+                        text("timestamp"),
+                        text("event_id")
+                    )
+                    .where(text("event_type = 'search_query'"))
+                    .order_by(desc(text("timestamp")))
+                    .limit(limit)
+                )
+
                 if user_id:
-                    query = query.where(UserSearchHistory.user_id == user_id)
+                    query = query.where(text("user_id = :user_id")).params(user_id=user_id)
                 elif session_id:
-                    query = query.where(UserSearchHistory.session_id == session_id)
+                    query = query.where(text("session_id = :session_id")).params(session_id=session_id)
                 else:
                     return []
-                
+
                 result = await session.execute(query)
                 history = []
-                
-                for record in result.scalars():
+
+                for row in result:
                     history.append({
-                        'query': record.query,
-                        'results_count': record.results_count,
-                        'timestamp': record.created_at.isoformat(),
-                        'clicked_products': json.loads(record.clicked_products or '[]')
+                        'query': row.query,
+                        'results_count': int(row.results_count) if row.results_count else 0,
+                        'timestamp': row.timestamp.isoformat() if hasattr(row.timestamp, 'isoformat') else str(row.timestamp),
+                        'clicked_products': []  # TODO: Could be derived from search_click events
                     })
-                
+
                 return history
-                
+
         except Exception as e:
-            logger.error(f"Error getting user search history: {str(e)}")
+            logger.error(f"Error getting user search history from analytics: {str(e)}")
             return []
     
     async def get_user_viewed_products(
@@ -359,41 +332,58 @@ class PersonalizedSearchEngine:
         session_id: str = None,
         limit: int = 100
     ) -> List[Dict]:
-        """Get user's recently viewed products"""
+        """Get user's recently viewed products from analytics_events"""
         try:
-            async with get_async_session() as session:
-                query = select(UserProductViews).order_by(desc(UserProductViews.created_at)).limit(limit)
-                
+            async with self.get_analytics_session() as session:
+                # Query analytics_events for product_view events
+                query = (
+                    select(
+                        text("product_id"),
+                        text("properties->>'product_name' as product_name"),
+                        text("properties->>'product_sku' as product_sku"),
+                        text("properties->>'categories' as categories"),
+                        text("properties->>'category_ids' as category_ids"),
+                        text("properties->>'view_duration' as view_duration"),
+                        text("properties->>'came_from_search' as came_from_search"),
+                        text("properties->>'search_query' as search_query"),
+                        text("timestamp")
+                    )
+                    .where(text("event_type = 'product_view'"))
+                    .order_by(desc(text("timestamp")))
+                    .limit(limit)
+                )
+
                 if user_id:
-                    query = query.where(UserProductViews.user_id == user_id)
+                    query = query.where(text("user_id = :user_id")).params(user_id=user_id)
                 elif session_id:
-                    query = query.where(UserProductViews.session_id == session_id)
+                    query = query.where(text("session_id = :session_id")).params(session_id=session_id)
                 else:
                     return []
-                
+
                 # Only get recent views
                 cutoff_date = datetime.utcnow() - timedelta(days=self.max_history_days)
-                query = query.where(UserProductViews.created_at >= cutoff_date)
-                
+                query = query.where(text("timestamp >= :cutoff")).params(cutoff=cutoff_date)
+
                 result = await session.execute(query)
                 viewed_products = []
-                
-                for record in result.scalars():
+
+                for row in result:
                     viewed_products.append({
-                        'product_id': record.product_id,
-                        'product_name': record.product_name,
-                        'product_sku': record.product_sku,
-                        'categories': json.loads(record.categories or '[]'),
-                        'view_duration': record.view_duration,
-                        'came_from_search': record.came_from_search,
-                        'search_query': record.search_query,
-                        'timestamp': record.created_at.isoformat()
+                        'product_id': row.product_id,
+                        'product_name': row.product_name,
+                        'product_sku': row.product_sku,
+                        'categories': json.loads(row.categories or '[]') if row.categories else [],
+                        'category_ids': json.loads(row.category_ids or '[]') if row.category_ids else [],
+                        'view_duration': int(row.view_duration) if row.view_duration else 0,
+                        'came_from_search': row.came_from_search == 'true' if row.came_from_search else False,
+                        'search_query': row.search_query,
+                        'timestamp': row.timestamp.isoformat() if hasattr(row.timestamp, 'isoformat') else str(row.timestamp)
                     })
-                
+
                 return viewed_products
-                
+
         except Exception as e:
-            logger.error(f"Error getting user viewed products: {str(e)}")
+            logger.error(f"Error getting user viewed products from analytics: {str(e)}")
             return []
     
     async def _update_personalized_weight(

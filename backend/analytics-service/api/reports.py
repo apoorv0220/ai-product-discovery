@@ -17,10 +17,21 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-@router.get("/performance")
+@router.get("/performance",
+           summary="Get Performance Report",
+           description="""
+    Generate comprehensive performance report with business metrics.
+
+    **Includes:**
+    - Traffic and engagement metrics
+    - Conversion funnel analysis
+    - Revenue and sales performance
+    - User behavior insights
+    - Time-based comparisons
+    """)
 async def get_performance_report(
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)", example="2025-01-01"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)", example="2025-01-15"),
     request: Request = None
 ):
     """Get performance report"""
@@ -40,7 +51,17 @@ async def get_performance_report(
         return {"error": str(e)}
 
 
-@router.get("/user-behavior")
+@router.get("/user-behavior",
+           summary="Get User Behavior Report",
+           description="""
+    Generate detailed user behavior analysis report.
+
+    **Includes:**
+    - User segmentation analysis
+    - Behavioral patterns and trends
+    - Engagement and retention metrics
+    - Personalized insights
+    """)
 async def get_user_behavior_report(request: Request):
     """Get user behavior report"""
     try:

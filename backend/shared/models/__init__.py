@@ -19,7 +19,13 @@ from shared.models.user import User  # noqa: F401
 # Import models that depend on core models
 from shared.models.api_key import APIKey  # noqa: F401
 from shared.models.api_key_usage import APIKeyUsage  # noqa: F401
-from shared.models.analytics import AnalyticsEvent  # noqa: F401
+from shared.models.analytics import (  # noqa: F401
+    AnalyticsEvent,
+    AnalyticsAggregation,
+    UserBehaviorAggregation,
+    SessionAnalytics,
+    AnalyticsEventArchive,
+)
 from shared.models.recommendation import ProductSimilarity  # noqa: F401
 
 # Import personalization models
@@ -43,6 +49,10 @@ __all__ = [
     "APIKey",
     "APIKeyUsage",
     "AnalyticsEvent",
+    "AnalyticsAggregation",
+    "UserBehaviorAggregation",
+    "SessionAnalytics",
+    "AnalyticsEventArchive",
     "ProductSimilarity",
     # Personalization models
     "UserSearchHistory",

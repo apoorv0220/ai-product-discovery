@@ -8,29 +8,53 @@ AI Product Discovery Suite - Analytics Tasks
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
+import asyncio
 from shared.celery.app import app
+from shared.config.redis import analytics_buffer
 import structlog
 
 logger = structlog.get_logger()
 
 
 @app.task(bind=True)
-def process_analytics_batch(self, events_batch):
+def process_analytics_batch(self):
     """
-    Process a batch of analytics events
+    Process a batch of analytics events from Redis queue
     
-    Args:
-        events_batch: List of analytics events to process
+    This task is called periodically (e.g., every 30 seconds) to process
+    buffered events from the Redis queue.
     """
     try:
+        # Get events from buffer
+        events_batch = analytics_buffer.get_buffered_events(batch_size=100)
+        
+        if not events_batch:
+            logger.debug("No events to process")
+            return {"success": True, "processed": 0}
+        
         logger.info("Processing analytics batch", count=len(events_batch))
         
-        # TODO: Implement actual analytics processing
-        # This would typically:
-        # 1. Validate events
-        # 2. Store in database
-        # 3. Update aggregated metrics
-        # 4. Trigger real-time updates
+        # Import here to avoid circular dependencies
+        import sys
+        import os
+        # Add analytics-service to path
+        analytics_service_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'analytics-service')
+        if analytics_service_path not in sys.path:
+            sys.path.insert(0, analytics_service_path)
+        from core.aggregator import DataAggregator
+        
+        # Create aggregator and process events
+        aggregator = DataAggregator()
+        
+        # Run async aggregation
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            success = loop.run_until_complete(aggregator.aggregate_events(events_batch))
+            if not success:
+                raise Exception("Aggregation failed")
+        finally:
+            loop.close()
         
         logger.info("Analytics batch processed", count=len(events_batch))
         return {"success": True, "processed": len(events_batch)}

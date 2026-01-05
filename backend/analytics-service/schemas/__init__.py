@@ -11,9 +11,11 @@ AI Product Discovery Suite - Analytics Service Schemas
 from .events import EventRequest, EventResponse, EventData
 from .dashboard import DashboardRequest, DashboardResponse, DashboardData
 from .reports import ReportRequest, ReportResponse, ReportData
+from .tracking import ProductViewRequest, SearchQueryRequest, SearchClickRequest, TrackingResponse
 
 __all__ = [
     'EventRequest', 'EventResponse', 'EventData',
     'DashboardRequest', 'DashboardResponse', 'DashboardData',
-    'ReportRequest', 'ReportResponse', 'ReportData'
+    'ReportRequest', 'ReportResponse', 'ReportData',
+    'ProductViewRequest', 'SearchQueryRequest', 'SearchClickRequest', 'TrackingResponse'
 ]

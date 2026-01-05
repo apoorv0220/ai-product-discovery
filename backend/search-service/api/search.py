@@ -29,6 +29,7 @@ from schemas.search import (
 )
 from core.personalized_search import personalized_search_engine
 from core.merchandising_engine import MerchandisingRulesEngine
+from core.event_publisher import event_publisher
 
 logger = structlog.get_logger()
 
@@ -800,6 +801,20 @@ async def search_products(search_request: SearchRequest, request: Request):
             "merchandising_applied": merchandising_applied,
             "merchandising_rules_applied": rules_applied_count,
         })
+
+        # Publish search query event to Redis for analytics (non-blocking, fire-and-forget)
+        # This happens after search results are ready, so it doesn't affect response time
+        try:
+            await event_publisher.publish_search_query_event(
+                merchant_id=merchant_id,
+                query=search_request.query,
+                user_id=search_request.user_id,
+                session_id=search_request.session_id,
+                results=formatted
+            )
+        except Exception as e:
+            # Don't fail search if event publishing fails
+            logger.warning("Failed to publish search query event", error=str(e))
 
         return response_dict
     except HTTPException:

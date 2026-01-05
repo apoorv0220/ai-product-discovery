@@ -31,9 +31,10 @@ from shared.middleware.rate_limiter import RateLimitMiddleware
 from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import events, dashboard, reports, health
+from api import dashboard, reports, health, tracking
 from core.processor import EventProcessor
 from core.aggregator import DataAggregator
+from core.event_subscriber import EventSubscriber
 
 
 # Configure structured logging
@@ -79,6 +80,11 @@ async def lifespan(app: FastAPI):
         await app.state.data_aggregator.initialize()
         logger.info("Data aggregator initialized")
         
+        # Initialize event subscriber for Redis pub/sub
+        app.state.event_subscriber = EventSubscriber(app.state.event_processor)
+        await app.state.event_subscriber.start()
+        logger.info("Event subscriber initialized")
+        
         logger.info("Analytics Service startup complete")
         yield
         
@@ -104,6 +110,11 @@ async def lifespan(app: FastAPI):
             await app.state.data_aggregator.cleanup()
             logger.info("Data aggregator cleaned up")
         
+        # Clean up event subscriber
+        if hasattr(app.state, 'event_subscriber'):
+            await app.state.event_subscriber.stop()
+            logger.info("Event subscriber cleaned up")
+        
         logger.info("Analytics Service shutdown complete")
         
     except Exception as e:
@@ -113,20 +124,78 @@ async def lifespan(app: FastAPI):
 # Initialize settings
 settings = AnalyticsServiceSettings()
 
+from fastapi.openapi.utils import get_openapi
+
 # Create FastAPI application
 app = FastAPI(
     title="AI Product Discovery - Analytics Service",
-    description="Analytics and tracking service for e-commerce insights",
+    description="""
+    **AI Product Discovery Suite - Analytics Service**
+
+    ## 🚀 Analytics & Business Intelligence
+
+    ### Key Features
+    - **Real-time Event Processing**: High-throughput analytics event ingestion
+    - **Behavioral Analytics**: User segmentation and behavior analysis
+    - **Business Intelligence**: Dashboards, reports, and time-series metrics
+    - **A/B Testing Framework**: Statistical analysis and automated optimization
+    - **Conversion Optimization**: Revenue attribution and funnel analysis
+
+    ### Main Endpoints
+    - **POST** `/api/v1/events/track` - Track analytics events
+    - **GET** `/api/v1/dashboard/overview` - Dashboard overview metrics
+    - **GET** `/api/v1/dashboard/metrics` - Time-series metrics
+    - **GET** `/api/v1/reports/performance` - Performance reports
+
+    ### Authentication
+    All endpoints require Bearer token authentication. Use your API key (ak_...) in the Authorization header.
+
+    ### Event Types Supported
+    - `page_view` - Page views and navigation
+    - `product_view` - Product detail page views
+    - `search` - Search queries performed
+    - `add_to_cart` - Items added to cart
+    - `remove_from_cart` - Items removed from cart
+    - `purchase` - Purchase completions
+    - `wishlist_add` - Items added to wishlist
+    - `recommendation_click` - Recommendation clicks
+    - `filter_apply` - Filter applications
+    - `session_start` - Session beginnings
+    - `session_end` - Session endings
+    """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
 )
 
+# Add global Bearer auth (Authorize button in Swagger) applied to all endpoints
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    components = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    components["APIKeyAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "APIKey",
+        "description": "Paste your API key (ak_...)"
+    }
+    openapi_schema["security"] = [{"APIKeyAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
 # Add middleware in execution order (FastAPI executes in reverse order of addition)
 # Execution order: CorrelationID -> Auth -> RateLimit -> Metrics -> GZip -> CORS
 
-# 1. CORS (executes last in response, first in request routing)
+# 1. CORS (executes last in response, first in response routing)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -185,7 +254,7 @@ async def metrics():
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(events.router, prefix="/api/v1/events", tags=["events"])
+app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])  
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 
