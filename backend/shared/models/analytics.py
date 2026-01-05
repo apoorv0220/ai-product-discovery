@@ -123,7 +123,7 @@ class UserBehaviorAggregation(Base):
         nullable=False,
         index=True
     )
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = Column(String(255), nullable=True, index=True)  # String user IDs for plugin compatibility
     session_id = Column(String(255), nullable=False, index=True)  # For anonymous users
     
     # Behavior metrics
@@ -148,7 +148,6 @@ class UserBehaviorAggregation(Base):
 
     # Relationships
     merchant = relationship("Merchant", lazy="select")
-    user = relationship("User", lazy="select")
 
     __table_args__ = (
         Index('idx_user_behavior_merchant_user', 'merchant_id', 'user_id'),
