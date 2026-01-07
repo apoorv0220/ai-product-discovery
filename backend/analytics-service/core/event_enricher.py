@@ -9,7 +9,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from shared.models import Merchant, User, Product
+from shared.models import Merchant, Product
 from shared.database.base import AsyncSessionLocal
 
 logger = structlog.get_logger()
@@ -47,9 +47,8 @@ class EventEnricher:
             # Add merchant context
             enriched = await self._add_merchant_context(enriched, db_session)
             
-            # Add user context (if user_id provided)
-            if enriched.get('user_id'):
-                enriched = await self._add_user_context(enriched, db_session)
+            # User context enrichment disabled - plugin architecture uses external user_ids
+            # User data is not stored locally, only behavioral analytics
             
             # Add product context (if product_id provided)
             if enriched.get('product_id'):
@@ -102,52 +101,6 @@ class EventEnricher:
         
         return event_data
     
-    async def _add_user_context(
-        self,
-        event_data: Dict[str, Any],
-        db_session: AsyncSession
-    ) -> Dict[str, Any]:
-        """Add user context to event"""
-        user_id = event_data.get('user_id')
-        if not user_id:
-            return event_data
-        
-        try:
-            user = None
-            
-            # Handle both string and integer user_ids
-            if isinstance(user_id, int):
-                # Integer user_id - look up by User.id
-                result = await db_session.execute(
-                    select(User).where(User.id == user_id)
-                )
-                user = result.scalar_one_or_none()
-            elif isinstance(user_id, str):
-                # String user_id - try to parse as integer for magento_customer_id
-                # First try to parse as integer (magento_customer_id)
-                try:
-                    magento_id = int(user_id.replace('user_', '').replace('_', ''))
-                    result = await db_session.execute(
-                        select(User).where(User.magento_customer_id == magento_id)
-                    )
-                    user = result.scalar_one_or_none()
-                except (ValueError, AttributeError):
-                    # If parsing fails, skip user enrichment (external user ID)
-                    logger.debug("Skipping user enrichment for external user_id", user_id=user_id)
-                    return event_data
-            
-            if user:
-                if 'properties' not in event_data:
-                    event_data['properties'] = {}
-                if not isinstance(event_data['properties'], dict):
-                    event_data['properties'] = {}
-                
-                event_data['properties']['user_email'] = user.email
-                event_data['properties']['user_created_at'] = user.created_at.isoformat() if user.created_at else None
-        except Exception as e:
-            logger.warning("Error adding user context", error=str(e), user_id=user_id)
-        
-        return event_data
     
     async def _add_product_context(
         self,

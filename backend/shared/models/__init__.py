@@ -14,7 +14,6 @@ from shared.database.base import Base
 # Import core models first (no dependencies)
 from shared.models.merchant import Merchant  # noqa: F401
 from shared.models.product import Product  # noqa: F401
-from shared.models.user import User  # noqa: F401
 
 # Import models that depend on core models
 from shared.models.api_key import APIKey  # noqa: F401
@@ -44,7 +43,6 @@ __all__ = [
     # Core models
     "Merchant",
     "Product",
-    "User",
     # Dependent models
     "APIKey",
     "APIKeyUsage",
