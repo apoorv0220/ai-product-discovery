@@ -23,6 +23,7 @@ from shared.models.analytics import (
     UserBehaviorAggregation,
     SessionAnalytics,
 )
+from core.dashboard_cache import DashboardCache
 
 logger = structlog.get_logger()
 
@@ -31,7 +32,7 @@ class DashboardQueryService:
     """Service for dashboard database queries with proper error handling and optimization"""
     
     def __init__(self):
-        pass
+        self.cache = DashboardCache()
     
     def _build_date_filter(self, merchant_id: int, date_from: Optional[datetime], date_to: Optional[datetime]):
         """Build date range filter conditions"""

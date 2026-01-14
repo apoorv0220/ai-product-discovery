@@ -58,8 +58,18 @@ class Settings(BaseSettings):
 
         if in_container:
             # Running inside Docker container - use container network
-            db_host = os.getenv('POSTGRES_HOST', 'postgres')  # Container name
-            db_port = os.getenv('POSTGRES_PORT', '5432')      # Internal port
+            # Override localhost if it comes from .env but we are inside a container
+            env_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST'))
+            if env_host == 'localhost' or not env_host:
+                db_host = 'postgres'
+            else:
+                db_host = env_host
+                
+            env_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT'))
+            if env_port == '7010' or not env_port:
+                db_port = '5432'
+            else:
+                db_port = env_port
         else:
             # Running on host machine
             db_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST', 'localhost'))
@@ -72,23 +82,36 @@ class Settings(BaseSettings):
             raise ValueError("Database credentials not found. Please set POSTGRES_USER/POSTGRES_PASSWORD or DB_USER/DB_PASSWORD environment variables.")
         default_db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-        self.DATABASE_URL = os.getenv('DATABASE_URL', default_db_url)
+        # If DATABASE_URL is in environment, use it unless we are in a container and it points to localhost
+        env_db_url = os.getenv('DATABASE_URL')
+        if env_db_url and not (in_container and 'localhost' in env_db_url):
+            self.DATABASE_URL = env_db_url
+        else:
+            self.DATABASE_URL = default_db_url
+            
         self._db_configured = True
 
     def _configure_redis(self):
         """Configure Redis connection based on environment"""
-        environment = os.getenv('ENVIRONMENT', 'development')
+        # Detect if running inside Docker container
+        in_container = (
+            Path('/.dockerenv').exists() or
+            os.getenv('DOCKER_CONTAINER') == 'true' or
+            (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
+        )
 
-        if environment == 'production':
-            # Production: Use internal Docker network names
-            redis_password = os.getenv('REDIS_PASSWORD')
-            if not redis_password:
-                raise ValueError("REDIS_PASSWORD environment variable is required for production")
-            default_redis_url = f"redis://:{redis_password}@redis:6379/0"
-            default_celery_broker = f"redis://:{redis_password}@redis:6379/1"
-            default_celery_backend = f"redis://:{redis_password}@redis:6379/2"
+        if in_container:
+            # Running inside Docker container - use internal Docker network names
+            redis_host = 'redis'
+            redis_port = '6379'
+            redis_password = os.getenv('REDIS_PASSWORD', '')
+            
+            auth_part = f":{redis_password}@" if redis_password else ""
+            default_redis_url = f"redis://{auth_part}{redis_host}:{redis_port}/0"
+            default_celery_broker = f"redis://{auth_part}{redis_host}:{redis_port}/1"
+            default_celery_backend = f"redis://{auth_part}{redis_host}:{redis_port}/2"
         else:
-            # Development: Use external mapped ports
+            # Running on host machine - use external mapped ports
             redis_host = os.getenv('REDIS_HOST', 'localhost')
             redis_port = os.getenv('REDIS_PORT', '6379')
             redis_password = os.getenv('REDIS_PASSWORD', '')
@@ -105,13 +128,18 @@ class Settings(BaseSettings):
 
     def _configure_elasticsearch(self):
         """Configure Elasticsearch connection based on environment"""
-        environment = os.getenv('ENVIRONMENT', 'development')
+        # Detect if running inside Docker container
+        in_container = (
+            Path('/.dockerenv').exists() or
+            os.getenv('DOCKER_CONTAINER') == 'true' or
+            (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
+        )
 
-        if environment == 'production':
-            # Production: Use internal Docker network names
+        if in_container:
+            # Running inside Docker container
             default_es_url = "http://elasticsearch:9200"
         else:
-            # Development: Use external mapped ports
+            # Running on host machine
             es_host = os.getenv('ELASTICSEARCH_HOST', 'localhost')
             es_port = os.getenv('ELASTICSEARCH_PORT', os.getenv('ELASTICSEARCH_EXTERNAL_PORT', '7020'))
             default_es_url = f"http://{es_host}:{es_port}"
@@ -121,14 +149,19 @@ class Settings(BaseSettings):
 
     def _configure_qdrant(self):
         """Configure Qdrant connection based on environment"""
-        environment = os.getenv('ENVIRONMENT', 'development')
+        # Detect if running inside Docker container
+        in_container = (
+            Path('/.dockerenv').exists() or
+            os.getenv('DOCKER_CONTAINER') == 'true' or
+            (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
+        )
 
-        if environment == 'production':
-            # Production: Use internal Docker network names
+        if in_container:
+            # Running inside Docker container
             default_qdrant_url = "http://qdrant:6333"
             default_qdrant_grpc = 6334
         else:
-            # Development: Use external mapped ports
+            # Running on host machine
             qdrant_host = os.getenv('QDRANT_HOST', 'localhost')
             qdrant_port = os.getenv('QDRANT_PORT', os.getenv('QDRANT_EXTERNAL_PORT', '7021'))
             qdrant_grpc_port = os.getenv('QDRANT_GRPC_PORT', os.getenv('QDRANT_GRPC_EXTERNAL_PORT', '7022'))
@@ -147,14 +180,16 @@ class Settings(BaseSettings):
     
     # API
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 7099
+    API_PORT: int = 0  # Should be overridden by service-specific settings classes
     API_PREFIX: str = "/api/v1"
     
     # Database (configured dynamically above)
     DATABASE_URL: str = ""  # Set by _configure_database
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 20
+    DATABASE_POOL_SIZE: int = int(os.getenv('DATABASE_POOL_SIZE', '20'))  # Increased for Phase 2A
+    DATABASE_MAX_OVERFLOW: int = int(os.getenv('DATABASE_MAX_OVERFLOW', '30'))  # Increased for Phase 2A
     DATABASE_ECHO: bool = False
+    DATABASE_POOL_RECYCLE: int = int(os.getenv('DATABASE_POOL_RECYCLE', '3600'))  # 1 hour
+    DATABASE_POOL_PRE_PING: bool = True  # Enable connection health checks
     
     # Redis (configured dynamically above)
     REDIS_URL: str = ""  # Set by _configure_redis
@@ -177,10 +212,6 @@ class Settings(BaseSettings):
     # Celery (configured dynamically above)
     CELERY_BROKER_URL: str = ""  # Set by _configure_redis
     CELERY_RESULT_BACKEND: str = ""  # Set by _configure_redis
-    
-    # Celery
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     
     # Security
     SECRET_KEY: str = os.getenv('SECRET_KEY', "your-secret-key-change-in-production")
@@ -274,8 +305,12 @@ class SearchServiceSettings(Settings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Use environment variable or default to 7099
-        self.API_PORT = int(os.getenv('SEARCH_SERVICE_PORT', 7099))
+        # Use environment variable - required, no default to avoid conflicts
+        port = os.getenv('SEARCH_SERVICE_PORT')
+        if port:
+            self.API_PORT = int(port)
+        elif not hasattr(self, 'API_PORT') or self.API_PORT == 0:
+            self.API_PORT = 7099  # Fallback default for development
 
 
 class RecommendationServiceSettings(Settings):
@@ -284,7 +319,12 @@ class RecommendationServiceSettings(Settings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.API_PORT = int(os.getenv('RECOMMENDATION_SERVICE_PORT', 7099))
+        # Use environment variable - required, no default to avoid conflicts
+        port = os.getenv('RECOMMENDATION_SERVICE_PORT')
+        if port:
+            self.API_PORT = int(port)
+        elif not hasattr(self, 'API_PORT') or self.API_PORT == 0:
+            self.API_PORT = 7098  # Fallback default for development
 
 
 class ListingOptimizerSettings(Settings):
@@ -293,7 +333,12 @@ class ListingOptimizerSettings(Settings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.API_PORT = int(os.getenv('LISTING_OPTIMIZER_PORT', 7099))
+        # Use environment variable - required, no default to avoid conflicts
+        port = os.getenv('LISTING_OPTIMIZER_PORT')
+        if port:
+            self.API_PORT = int(port)
+        elif not hasattr(self, 'API_PORT') or self.API_PORT == 0:
+            self.API_PORT = 7099  # Fallback default for development
 
 
 class AnalyticsServiceSettings(Settings):
@@ -302,7 +347,12 @@ class AnalyticsServiceSettings(Settings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.API_PORT = int(os.getenv('ANALYTICS_SERVICE_PORT', 7099))
+        # Use environment variable - required, no default to avoid conflicts
+        port = os.getenv('ANALYTICS_SERVICE_PORT')
+        if port:
+            self.API_PORT = int(port)
+        elif not hasattr(self, 'API_PORT') or self.API_PORT == 0:
+            self.API_PORT = 7097  # Fallback default for development
 
 
 class ShoppingAssistantSettings(Settings):
@@ -311,4 +361,9 @@ class ShoppingAssistantSettings(Settings):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.API_PORT = int(os.getenv('SHOPPING_ASSISTANT_PORT', 7099))
+        # Use environment variable - required, no default to avoid conflicts
+        port = os.getenv('SHOPPING_ASSISTANT_PORT')
+        if port:
+            self.API_PORT = int(port)
+        elif not hasattr(self, 'API_PORT') or self.API_PORT == 0:
+            self.API_PORT = 7096  # Fallback default for development

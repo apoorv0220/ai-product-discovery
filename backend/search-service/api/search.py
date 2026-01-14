@@ -531,13 +531,20 @@ async def search_products(search_request: SearchRequest, request: Request):
         if search_mode in ["semantic", "hybrid"] and (not embedding_service or not qdrant_manager):
             logger.warning(f"Semantic search services not available for {search_mode}, falling back to keyword search")
             search_mode = "keyword"
-        elif search_mode == "hybrid" and (not embedding_service or not qdrant_manager):
-            logger.warning("Semantic search services not available for hybrid, falling back to keyword search")
-            search_mode = "keyword"
 
-        # Default hybrid weights
-        keyword_weight = 0.7
-        semantic_weight = 0.3
+        # Get hybrid weights from request (with defaults)
+        keyword_weight = search_request.keyword_weight if search_request.keyword_weight is not None else 0.7
+        semantic_weight = search_request.semantic_weight if search_request.semantic_weight is not None else 0.3
+        
+        # Normalize weights to sum to 1.0
+        weight_sum = keyword_weight + semantic_weight
+        if weight_sum > 0:
+            keyword_weight = keyword_weight / weight_sum
+            semantic_weight = semantic_weight / weight_sum
+        else:
+            # Fallback to defaults if both are 0
+            keyword_weight = 0.7
+            semantic_weight = 0.3
 
         # Extract query attributes for score calibration (Hybrid+ Scoring Tweaks)
         query_attributes = _extract_query_attributes(search_request.query)
@@ -800,6 +807,10 @@ async def search_products(search_request: SearchRequest, request: Request):
             "merchant_id": merchant_id,
             "merchandising_applied": merchandising_applied,
             "merchandising_rules_applied": rules_applied_count,
+            "search_weights": {
+                "keyword_weight": keyword_weight,
+                "semantic_weight": semantic_weight
+            } if search_mode == "hybrid" else None,
         })
 
         # Publish search query event to Redis for analytics (non-blocking, fire-and-forget)

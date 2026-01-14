@@ -24,7 +24,7 @@ numpy==2.2.1
 pandas==2.2.3
 scikit-learn==1.6.0
 sentence-transformers==3.3.1
-torch==2.5.1
+torch==2.2.2
 transformers==4.47.1
 nltk==3.9.1
 textdistance==4.6.3
@@ -77,3 +77,11 @@ opentelemetry-api==1.29.0
 opentelemetry-sdk==1.29.0
 opentelemetry-instrumentation-fastapi==0.50b0
 opentelemetry-exporter-prometheus==1.12.0rc1
+
+# Event Enrichment
+geoip2==4.8.0
+maxminddb==2.6.1
+user-agents==2.2.0
+
+# System Monitoring
+psutil==5.9.8

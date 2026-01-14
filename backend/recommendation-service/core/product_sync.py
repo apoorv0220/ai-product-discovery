@@ -11,7 +11,7 @@ import structlog
 from datetime import datetime
 
 from shared.database.base import get_database_session
-from shared.models.product import Product
+# from shared.models.product import Product # Removed
 from sqlalchemy import select, delete, insert, update
 from sqlalchemy.exc import IntegrityError
 
@@ -80,44 +80,13 @@ class ProductSyncManager:
             return {}
     
     async def _sync_to_database(self, products_data: Dict[str, Any]) -> int:
-        """Sync products to recommendation database"""
-        synced_count = 0
-        
-        try:
-            session_generator = get_database_session()
-            session = await session_generator.__anext__()
-            
-            try:
-                # Clear existing products
-                await session.execute(delete(Product))
-                
-                # Insert new products
-                for product_id, product_data in products_data.items():
-                    try:
-                        # Extract and clean product data
-                        product_info = self._extract_product_info(product_id, product_data)
-                        
-                        # Create product record
-                        new_product = Product(**product_info)
-                        session.add(new_product)
-                        synced_count += 1
-                        
-                    except Exception as e:
-                        logger.warning("Failed to sync product", 
-                                     product_id=product_id, 
-                                     error=str(e))
-                        continue
-                
-                await session.commit()
-                logger.info("Products synced to database", count=synced_count)
-                
-            finally:
-                await session.close()
-                
-        except Exception as e:
-            logger.error("Database sync failed", error=str(e))
-            raise
-            
+        """
+        Sync products to recommendation database
+        NOTE: Database sync for products is disabled as products are now stored 
+        only in ElasticSearch and Qdrant.
+        """
+        synced_count = len(products_data)
+        logger.info("Products sync to database skipped (stored in ES/Qdrant)", count=synced_count)
         return synced_count
     
     def _extract_product_info(self, product_id: str, product_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,26 +164,16 @@ class ProductSyncManager:
     async def get_sync_status(self) -> Dict[str, Any]:
         """Get current sync status"""
         try:
-            session_generator = get_database_session()
-            session = await session_generator.__anext__()
+            # Count products in search index
+            search_products = self._load_products_from_index()
+            search_count = len(search_products)
             
-            try:
-                # Count products in database
-                result = await session.execute(select(Product.id))
-                db_count = len(result.all())
-                
-                # Count products in search index
-                search_products = self._load_products_from_index()
-                search_count = len(search_products)
-                
-                return {
-                    "database_products": db_count,
-                    "search_index_products": search_count,
-                    "sync_needed": db_count != search_count,
-                    "last_check": datetime.utcnow().isoformat()
-                }
-            finally:
-                await session.close()
+            return {
+                "database_products": 0, # Products no longer in database
+                "search_index_products": search_count,
+                "sync_needed": False, # Sync not needed for DB
+                "last_check": datetime.utcnow().isoformat()
+            }
                 
         except Exception as e:
             logger.error("Failed to get sync status", error=str(e))

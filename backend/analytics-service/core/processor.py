@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from shared.database.base import AsyncSessionLocal
 from shared.models.analytics import AnalyticsEvent
-from shared.models import Product
+# from shared.models import Product # Removed
 from shared.schemas.analytics import AnalyticsEventSchema, EventType
 from shared.utils.event_validator import event_validator
 from shared.config.redis import analytics_buffer
@@ -209,7 +209,6 @@ class EventProcessor:
                         merchant_id=event_data.get('merchant_id'),
                         event_type=event_data.get('event_type'),
                         user_id=str(user_id_str) if user_id_str is not None else None,  # Store as string
-                        user_id_int=user_id_int,  # Store resolved integer ID for foreign key
                         session_id=event_data.get('session_id'),
                         product_id=product_id,  # Use verified product_id (may be None)
                         platform=event_data.get('platform'),

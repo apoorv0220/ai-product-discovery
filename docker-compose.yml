@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "7010:5432"
+      - "${POSTGRES_PORT:-7010}:5432"  # Explicit port mapping for local access
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Note: Database schema is now managed by Alembic migrations
@@ -30,175 +30,18 @@ services:
     container_name: ai_discovery_redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
-      - "${REDIS_EXTERNAL_PORT:-7011}:6379"
+      - "${REDIS_PORT:-7011}:6379"  # Explicit port mapping for local access
     volumes:
       - redis_data:/data
     restart: unless-stopped
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redis_password_2024", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 30s
-
-  # Search Service
-  search-service:
-    build:
-      context: ./backend
-      dockerfile: search-service/Dockerfile
-    container_name: ai_discovery_search
-    ports:
-      - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
-    env_file:
-      - .env.production
-    environment:
-      # Override environment to production when using env_file
-      - ENVIRONMENT=production
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Recommendation Service
-  recommendation-service:
-    build:
-      context: ./backend
-      dockerfile: recommendation-service/Dockerfile
-    container_name: ai_discovery_recommendation
-    ports:
-      - "${RECOMMENDATION_SERVICE_EXTERNAL_PORT:-7002}:${RECOMMENDATION_SERVICE_PORT:-7099}"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - RECOMMENDATION_SERVICE_HOST=0.0.0.0
-      - RECOMMENDATION_SERVICE_PORT=${RECOMMENDATION_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Analytics Service
-  analytics-service:
-    build:
-      context: ./backend
-      dockerfile: analytics-service/Dockerfile
-    container_name: ai_discovery_analytics
-    ports:
-      - "${ANALYTICS_SERVICE_EXTERNAL_PORT:-7004}:${ANALYTICS_SERVICE_PORT:-7099}"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - ANALYTICS_SERVICE_HOST=0.0.0.0
-      - ANALYTICS_SERVICE_PORT=${ANALYTICS_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Shopping Assistant Service
-  shopping-assistant:
-    build:
-      context: ./backend
-      dockerfile: shopping-assistant/Dockerfile
-    container_name: ai_discovery_assistant
-    ports:
-      - "${SHOPPING_ASSISTANT_EXTERNAL_PORT:-7005}:${SHOPPING_ASSISTANT_PORT:-7099}"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - SHOPPING_ASSISTANT_HOST=0.0.0.0
-      - SHOPPING_ASSISTANT_PORT=${SHOPPING_ASSISTANT_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Celery Worker
-  celery-worker:
-    build:
-      context: ./backend
-      dockerfile: shared/Dockerfile.celery
-    container_name: ai_discovery_celery_worker
-    environment:
-      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/2
-      - DATABASE_URL=postgresql+asyncpg://ai_user:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: celery -A shared.celery.app worker --loglevel=info
-
 
   # Elasticsearch (for search indexing)
   elasticsearch:
@@ -225,7 +68,7 @@ services:
           cpus: '1.0'
           memory: 2G
     ports:
-      - "${ELASTICSEARCH_EXTERNAL_PORT:-9200}:9200"
+      - "${ELASTICSEARCH_PORT:-7020}:9200"  # Explicit port mapping for local access
       - "9300:9300"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
@@ -244,8 +87,8 @@ services:
     image: qdrant/qdrant:latest
     container_name: ai_discovery_qdrant
     ports:
-      - "${QDRANT_EXTERNAL_PORT:-6333}:6333"
-      - "${QDRANT_GRPC_PORT:-6334}:6334"
+      - "${QDRANT_PORT:-7021}:6333"  # Explicit port mapping for local access
+      - "${QDRANT_GRPC_PORT:-7022}:6334"  # Explicit port mapping for local access
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -256,7 +99,95 @@ services:
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Worker (Development Infrastructure)
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_worker
+    ports:
+      - "5678:5678"  # Expose for development debugging
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4} --queues=analytics,celery --max-tasks-per-child=1000
+    healthcheck:
+      test: ["CMD", "celery", "-A", "shared.celery.app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Beat (Development Infrastructure)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_beat
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app beat --loglevel=info --pidfile=/tmp/celerybeat.pid
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/celerybeat.pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Flower (Development Infrastructure)
+  flower:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_flower
+    ports:
+      - "5555:5555"  # Expose Flower UI for development
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+    command: celery -A shared.celery.app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -u ${FLOWER_BASIC_AUTH:-admin:admin} http://localhost:5555/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

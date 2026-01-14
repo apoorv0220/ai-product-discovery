@@ -1,12 +1,11 @@
-"""Baseline schema migration using SQLAlchemy metadata.
+"""Baseline schema migration.
 
-This migration creates all tables registered on shared.database Base.metadata.
+This migration creates the core tables: merchants, api_keys, and api_key_usage.
 """
 
 from alembic import op
 import sqlalchemy as sa
-
-from shared.models import Base  # type: ignore
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = "0001_baseline"
@@ -16,34 +15,80 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Create all tables defined on Base.metadata."""
-    bind = op.get_bind()
-    # Use checkfirst=True to skip creation if objects already exist
-    # Note: checkfirst works for tables but indexes may still cause issues
-    # If you get duplicate index errors, ensure database is properly cleaned via Docker
-    try:
-        Base.metadata.create_all(bind=bind, checkfirst=True)
-    except Exception as e:
-        # If we get duplicate errors, it means objects exist from a previous partial migration
-        # In this case, we need to ensure proper cleanup via Docker commands
-        error_msg = str(e)
-        if "already exists" in error_msg.lower() or "duplicate" in error_msg.lower():
-            raise Exception(
-                f"Migration failed: {error_msg}\n\n"
-                "This usually means the database has leftover objects from a previous migration.\n"
-                "Please ensure proper cleanup:\n"
-                "  1. docker exec ai_discovery_postgres psql -U ai_user -d postgres -c 'DROP DATABASE IF EXISTS ai_discovery;'\n"
-                "  2. docker exec ai_discovery_postgres psql -U ai_user -d postgres -c 'CREATE DATABASE ai_discovery;'\n"
-                "  3. Then run: alembic upgrade head"
-            ) from e
-        raise
+    """Create core tables."""
+    # Create merchants table
+    op.create_table(
+        'merchants',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False),
+        sa.Column('company_name', sa.String(length=255), nullable=True),
+        sa.Column('tier', sa.String(length=50), server_default='free', nullable=False),
+        sa.Column('status', sa.String(length=50), server_default='active', nullable=False),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('email')
+    )
+    op.create_index('idx_merchants_email', 'merchants', ['email'])
+    op.create_index('idx_merchants_status', 'merchants', ['status'])
+    op.create_index('idx_merchants_tier', 'merchants', ['tier'])
+
+    # Create api_keys table
+    op.create_table(
+        'api_keys',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('merchant_id', sa.Integer(), nullable=False),
+        sa.Column('key_hash', sa.String(length=255), nullable=False),
+        sa.Column('key_prefix', sa.String(length=8), nullable=False),
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('description', sa.Text(), nullable=True),
+        sa.Column('rate_limit_per_minute', sa.Integer(), server_default='100', nullable=False),
+        sa.Column('status', sa.String(length=50), server_default='active', nullable=False),
+        sa.Column('scopes', sa.Text(), nullable=True),
+        sa.Column('expires_at', sa.DateTime(), nullable=True),
+        sa.Column('last_used_at', sa.DateTime(), nullable=True),
+        sa.Column('usage_count', sa.Integer(), server_default='0', nullable=True),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+        sa.Column('created_by', sa.Integer(), nullable=True),
+        sa.Column('revoked_at', sa.DateTime(), nullable=True),
+        sa.Column('revoked_by', sa.Integer(), nullable=True),
+        sa.Column('revoked_reason', sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(['merchant_id'], ['merchants.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_api_keys_expires_at', 'api_keys', ['expires_at'])
+    op.create_index('idx_api_keys_key_prefix', 'api_keys', ['key_prefix'])
+    op.create_index('idx_api_keys_merchant_id', 'api_keys', ['merchant_id'])
+    op.create_index('idx_api_keys_status', 'api_keys', ['status'])
+
+    # Create api_key_usage table
+    op.create_table(
+        'api_key_usage',
+        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column('api_key_id', sa.Integer(), nullable=False),
+        sa.Column('merchant_id', sa.Integer(), nullable=False),
+        sa.Column('endpoint', sa.String(length=500), nullable=False),
+        sa.Column('method', sa.String(length=10), nullable=False),
+        sa.Column('status_code', sa.Integer(), nullable=False),
+        sa.Column('response_time_ms', sa.Integer(), nullable=False),
+        sa.Column('ip_address', sa.String(length=45), nullable=True),
+        sa.Column('user_agent', sa.String(length=500), nullable=True),
+        sa.Column('request_id', sa.String(length=255), nullable=True),
+        sa.Column('correlation_id', sa.String(length=255), nullable=True),
+        sa.Column('timestamp', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+        sa.ForeignKeyConstraint(['api_key_id'], ['api_keys.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['merchant_id'], ['merchants.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_api_key_usage_api_key_id', 'api_key_usage', ['api_key_id'])
+    op.create_index('idx_api_key_usage_endpoint', 'api_key_usage', ['endpoint'])
+    op.create_index('idx_api_key_usage_merchant_id', 'api_key_usage', ['merchant_id'])
+    op.create_index('idx_api_key_usage_timestamp', 'api_key_usage', ['timestamp'])
 
 
 def downgrade() -> None:
-    """Drop all tables defined on Base.metadata."""
-    bind = op.get_bind()
-    Base.metadata.drop_all(bind=bind)
-
-
-
-
+    """Drop core tables."""
+    op.drop_table('api_key_usage')
+    op.drop_table('api_keys')
+    op.drop_table('merchants')

@@ -25,19 +25,9 @@ class AnalyticsEvent(Base):
     )
     event_type = Column(String(50), nullable=False, index=True)
     user_id = Column(String(255), nullable=True, index=True)  # Support both string and int user IDs
-    user_id_int = Column(
-        Integer,
-        ForeignKey('users.id', ondelete='SET NULL'),
-        nullable=True,
-        index=True
-    )  # Resolved integer user ID for foreign key relationships
     session_id = Column(String(36), nullable=True, index=True)  # Made optional
-    product_id = Column(
-        Integer, 
-        ForeignKey('products.id', ondelete='SET NULL'),
-        nullable=True,
-        index=True
-    )
+    product_id = Column(Integer, nullable=True, index=True) # No longer a ForeignKey
+    
     # Additional context fields
     platform = Column(String(50))  # e.g., "magento", "woocommerce"
     device_type = Column(String(50))  # "mobile", "desktop", "tablet"
@@ -50,8 +40,6 @@ class AnalyticsEvent(Base):
 
     # Relationships
     merchant = relationship("Merchant", lazy="select")
-    user = relationship("User", lazy="select")
-    product = relationship("Product", lazy="select")
 
     __table_args__ = (
         Index('idx_analytics_events_event_id', 'event_id'),
@@ -59,7 +47,6 @@ class AnalyticsEvent(Base):
         Index('idx_analytics_events_timestamp', 'timestamp'),
         Index('idx_analytics_events_type', 'event_type'),
         Index('idx_analytics_events_user_id', 'user_id'),
-        Index('idx_analytics_events_user_id_int', 'user_id_int'),
         Index('idx_analytics_events_session_id', 'session_id'),
         Index('idx_analytics_events_product_id', 'product_id'),
         Index('idx_analytics_events_merchant_timestamp', 'merchant_id', 'timestamp'),
@@ -168,7 +155,7 @@ class SessionAnalytics(Base):
         index=True
     )
     session_id = Column(String(255), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    user_id = Column(String(255), nullable=True, index=True) # Changed from Integer FK to String
     
     # Session metrics
     start_time = Column(DateTime, nullable=False, index=True)
@@ -197,7 +184,6 @@ class SessionAnalytics(Base):
 
     # Relationships
     merchant = relationship("Merchant", lazy="select")
-    user = relationship("User", lazy="select")
 
     __table_args__ = (
         Index('idx_session_analytics_merchant_session', 'merchant_id', 'session_id', unique=True),
@@ -219,9 +205,9 @@ class AnalyticsEventArchive(Base):
         index=True
     )
     event_type = Column(String(50), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+    user_id = Column(String(255), nullable=True, index=True) # Changed from Integer FK to String
     session_id = Column(String(36), index=True)
-    product_id = Column(Integer, ForeignKey('products.id', ondelete='SET NULL'), nullable=True, index=True)
+    product_id = Column(Integer, nullable=True, index=True) # No longer a ForeignKey
     platform = Column(String(50))
     device_type = Column(String(50))
     ip_address = Column(String(45))
@@ -234,11 +220,8 @@ class AnalyticsEventArchive(Base):
 
     # Relationships
     merchant = relationship("Merchant", lazy="select")
-    user = relationship("User", lazy="select")
-    product = relationship("Product", lazy="select")
 
     __table_args__ = (
         Index('idx_analytics_archive_merchant_timestamp', 'merchant_id', 'timestamp'),
         Index('idx_analytics_archive_event_id', 'event_id'),
     )
-

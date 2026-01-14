@@ -56,6 +56,7 @@ class QdrantManager:
         """Initialize Qdrant client and verify connection"""
         try:
             # Create synchronous client (Qdrant Python client doesn't have async yet)
+            # Optimized for performance with connection pooling
             self.client = QdrantClient(
                 url=self.url,
                 api_key=self.api_key,

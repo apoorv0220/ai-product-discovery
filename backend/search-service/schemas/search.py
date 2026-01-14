@@ -10,7 +10,7 @@ Reflects actual API response formats with OpenAI integration and personalization
 """
 
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 
 
 class SearchResultItem(BaseModel):
@@ -172,6 +172,28 @@ class SearchRequest(BaseModel):
 
     # Search type for debugging
     search_type: str = Field(default="hybrid", description="Search type: 'keyword', 'semantic', or 'hybrid'")
+    
+    # Hybrid search weights (for RRF algorithm)
+    keyword_weight: Optional[float] = Field(default=0.7, ge=0.0, le=1.0, description="Weight for keyword search results (0.0-1.0)")
+    semantic_weight: Optional[float] = Field(default=0.3, ge=0.0, le=1.0, description="Weight for semantic search results (0.0-1.0)")
+    
+    @model_validator(mode='after')
+    def validate_weights(self):
+        """Validate and normalize weights to sum to 1.0"""
+        kw = self.keyword_weight or 0.7
+        sw = self.semantic_weight or 0.3
+        total = kw + sw
+        
+        if abs(total - 1.0) > 0.01 and total > 0:  # Allow 1% tolerance
+            # Normalize weights to sum to 1.0
+            self.keyword_weight = kw / total
+            self.semantic_weight = sw / total
+        elif total == 0:
+            # Fallback to defaults if both are 0
+            self.keyword_weight = 0.7
+            self.semantic_weight = 0.3
+        
+        return self
 
     @validator('filters', pre=True)
     def normalize_filters(cls, v):

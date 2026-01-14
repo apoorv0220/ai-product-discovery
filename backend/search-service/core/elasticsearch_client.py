@@ -54,6 +54,8 @@ class ElasticsearchManager:
             request_timeout=30,
             max_retries=3,
             retry_on_timeout=True,
+            # Connection pooling optimization
+            maxsize=25,  # Max connections in pool
         )
 
         # Verify cluster health

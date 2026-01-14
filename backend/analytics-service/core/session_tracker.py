@@ -3,14 +3,15 @@ Session Tracker
 Tracks and manages user sessions for analytics
 """
 
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from datetime import datetime, timedelta
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_, desc
 
-from shared.models.analytics import SessionAnalytics
+from shared.models.analytics import SessionAnalytics, AnalyticsEvent
 from shared.database.base import AsyncSessionLocal
+from shared.config.redis import CacheManager
 
 logger = structlog.get_logger()
 
@@ -22,7 +23,7 @@ class SessionTracker:
     SESSION_TIMEOUT_MINUTES = 30
     
     def __init__(self):
-        pass
+        self.cache = CacheManager()
     
     async def get_or_create_session(
         self,
@@ -351,6 +352,144 @@ class SessionTracker:
                 serialized[key] = value
         
         return serialized
+    
+    async def get_user_journey(
+        self,
+        merchant_id: int,
+        device_fingerprint: Optional[str] = None,
+        user_id: Optional[Union[str, int]] = None,
+        limit: int = 50,
+        db_session: Optional[AsyncSession] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get user journey across sessions using device fingerprint or user_id
+        
+        Args:
+            merchant_id: Merchant ID
+            device_fingerprint: Device fingerprint hash
+            user_id: Optional user ID
+            limit: Maximum number of sessions to return
+            db_session: Optional database session
+            
+        Returns:
+            List of session dictionaries ordered by start_time
+        """
+        use_external_session = db_session is not None
+        if not db_session:
+            db_session = AsyncSessionLocal()
+        
+        try:
+            # Build query to find sessions
+            conditions = [SessionAnalytics.merchant_id == merchant_id]
+            
+            if user_id:
+                conditions.append(SessionAnalytics.user_id == str(user_id))
+            elif device_fingerprint:
+                # Find sessions with matching device fingerprint via events
+                # Get session_ids from events with matching device fingerprint
+                event_query = select(AnalyticsEvent.session_id).where(
+                    and_(
+                        AnalyticsEvent.merchant_id == merchant_id,
+                        AnalyticsEvent.metadata['device_fingerprint'].astext == device_fingerprint
+                    )
+                ).distinct()
+                
+                result = await db_session.execute(event_query)
+                session_ids = [row[0] for row in result.fetchall() if row[0]]
+                
+                if session_ids:
+                    conditions.append(SessionAnalytics.session_id.in_(session_ids))
+                else:
+                    return []
+            else:
+                return []
+            
+            # Get sessions ordered by start_time
+            query = select(SessionAnalytics).where(
+                and_(*conditions)
+            ).order_by(desc(SessionAnalytics.start_time)).limit(limit)
+            
+            result = await db_session.execute(query)
+            sessions = result.scalars().all()
+            
+            journey = []
+            for session in sessions:
+                journey.append({
+                    'session_id': session.session_id,
+                    'user_id': session.user_id,
+                    'start_time': session.start_time.isoformat() if session.start_time else None,
+                    'end_time': session.end_time.isoformat() if session.end_time else None,
+                    'duration': session.duration,
+                    'page_views': session.page_views,
+                    'product_views': session.product_views,
+                    'searches': session.searches,
+                    'add_to_carts': session.add_to_carts,
+                    'purchases': session.purchases,
+                    'revenue': float(session.revenue) if session.revenue else 0.0,
+                    'entry_page': session.entry_page,
+                    'exit_page': session.exit_page,
+                    'device_type': session.device_type,
+                    'platform': session.platform,
+                    'bounce': session.bounce == 'true',
+                    'journey': session.journey or []
+                })
+            
+            return journey
+            
+        except Exception as e:
+            logger.error("Error getting user journey", error=str(e))
+            return []
+        finally:
+            if not use_external_session:
+                await db_session.close()
+    
+    async def link_sessions_by_fingerprint(
+        self,
+        merchant_id: int,
+        device_fingerprint: str,
+        current_session_id: str,
+        db_session: Optional[AsyncSession] = None
+    ) -> List[str]:
+        """
+        Link sessions via device fingerprint to identify returning anonymous users
+        
+        Args:
+            merchant_id: Merchant ID
+            device_fingerprint: Device fingerprint hash
+            current_session_id: Current session ID
+            db_session: Optional database session
+            
+        Returns:
+            List of linked session IDs
+        """
+        use_external_session = db_session is not None
+        if not db_session:
+            db_session = AsyncSessionLocal()
+        
+        try:
+            # Find all sessions with matching device fingerprint
+            event_query = select(AnalyticsEvent.session_id).where(
+                and_(
+                    AnalyticsEvent.merchant_id == merchant_id,
+                    AnalyticsEvent.metadata['device_fingerprint'].astext == device_fingerprint
+                )
+            ).distinct()
+            
+            result = await db_session.execute(event_query)
+            linked_session_ids = [row[0] for row in result.fetchall() if row[0]]
+            
+            # Cache the link for quick lookup
+            cache_key = f"session_link:{merchant_id}:{device_fingerprint}"
+            await self.cache.aset(cache_key, linked_session_ids, 86400)  # 24h TTL
+            
+            return linked_session_ids
+            
+        except Exception as e:
+            logger.warning("Error linking sessions by fingerprint", error=str(e))
+            return []
+        finally:
+            if not use_external_session:
+                await db_session.close()
 
 
 # Global session tracker instance

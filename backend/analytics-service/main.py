@@ -22,6 +22,44 @@ import structlog
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Load environment variables from .env file (dual environment support) - MUST happen before imports
+try:
+    from dotenv import load_dotenv
+    import pathlib
+
+    # Detect if running in Docker container
+    in_docker = (
+        pathlib.Path('/.dockerenv').exists() or  # Docker container marker
+        os.getenv('HOSTNAME', '').startswith('ai_discovery_') or  # Container naming pattern
+        pathlib.Path('/app').exists()  # Docker working directory
+    )
+
+    if in_docker:
+        print("[INFO] Running in Docker container - using Docker-provided environment variables")
+    else:
+        # Local development: load from .env files
+        env_paths = [
+            pathlib.Path(__file__).parent.parent.parent / '.env.local',  # Local overrides
+            pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+            pathlib.Path(__file__).parent.parent.parent / '.env.dev',  # Development
+            pathlib.Path(__file__).parent.parent.parent / '.env.production',  # Production
+        ]
+
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path)
+                print(f"[SUCCESS] Loaded environment variables from {env_path}")
+                env_loaded = True
+                break
+
+        if not env_loaded:
+            print("[INFO] No .env file found - using system environment variables or defaults")
+
+except ImportError:
+    print("[WARNING] python-dotenv not available, skipping .env loading")
 
 from shared.config.settings import AnalyticsServiceSettings
 from shared.database.base import init_database, close_database
@@ -31,7 +69,7 @@ from shared.middleware.rate_limiter import RateLimitMiddleware
 from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import dashboard, reports, health, tracking
+from api import dashboard, reports, health, tracking, metrics
 from core.processor import EventProcessor
 from core.aggregator import DataAggregator
 from core.event_subscriber import EventSubscriber
@@ -84,6 +122,7 @@ async def lifespan(app: FastAPI):
         app.state.event_subscriber = EventSubscriber(app.state.event_processor)
         await app.state.event_subscriber.start()
         logger.info("Event subscriber initialized")
+        
         
         logger.info("Analytics Service startup complete")
         yield
@@ -248,7 +287,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Add metrics endpoint (must be exempt from auth)
 @app.get("/metrics")
-async def metrics():
+async def prometheus_metrics():
     """Prometheus metrics endpoint"""
     return metrics_endpoint()
 
@@ -257,6 +296,7 @@ app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])  
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
 
 
 @app.get("/")

@@ -66,7 +66,7 @@ from shared.middleware.correlation_id import CorrelationIDMiddleware
 from shared.middleware.auth import APIKeyAuthMiddleware
 from shared.middleware.rate_limiter import RateLimitMiddleware
 from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
-from api import search, autocomplete, index, health, semantic_search
+from api import search, autocomplete, index, health, semantic_search, search_config
 from core.elasticsearch_client import ElasticsearchManager
 from core.ml_engine import MLEngine
 from core.embedding_service import EmbeddingService
@@ -377,6 +377,7 @@ async def metrics():
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
+app.include_router(search_config.router, prefix="/api/v1/search/config", tags=["search"])
 app.include_router(semantic_search.router, prefix="/api/v1/search/semantic", tags=["search"])
 app.include_router(autocomplete.router, prefix="/api/v1/autocomplete", tags=["autocomplete"])
 app.include_router(index.router, prefix="/api/v1/index", tags=["indexing"])

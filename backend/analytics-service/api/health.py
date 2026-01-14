@@ -32,16 +32,19 @@ class HealthResponse(BaseModel):
 async def health_check():
     """Basic health check endpoint"""
     try:
+        checks = {
+            "database": "healthy",
+            "event_processor": "healthy",
+            "data_aggregator": "healthy"
+        }
+        
+        
         return HealthResponse(
             status="healthy",
             timestamp=time.time(),
             service="analytics-service",
             version="1.0.0",
-            checks={
-                "database": "healthy",
-                "event_processor": "healthy",
-                "data_aggregator": "healthy"
-            }
+            checks=checks
         )
     except Exception as e:
         logger.error("Health check failed", error=str(e))

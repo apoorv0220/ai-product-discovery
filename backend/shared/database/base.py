@@ -31,13 +31,24 @@ metadata = MetaData(
     }
 )
 
-# Create async engine
+# Create async engine with optimized connection pooling
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_recycle=getattr(settings, 'DATABASE_POOL_RECYCLE', 3600),  # 1 hour
+    pool_pre_ping=getattr(settings, 'DATABASE_POOL_PRE_PING', True),  # Connection health checks
     echo=settings.DATABASE_ECHO,
-    future=True
+    future=True,
+    # Connection timeout
+    connect_args={
+        "server_settings": {
+            "application_name": "ai_discovery_analytics",
+            "tcp_keepalives_idle": "600",
+            "tcp_keepalives_interval": "30",
+            "tcp_keepalives_count": "3"
+        }
+    }
 )
 
 # Create async session maker
@@ -94,11 +105,11 @@ async def init_database():
                 # Import all models through shared.models.__init__ to register them with Base.metadata
                 try:
                     from shared.models import (
-                        Merchant, Product, User, APIKey, APIKeyUsage,
+                        Merchant, APIKey, APIKeyUsage,
                         AnalyticsEvent, ProductSimilarity,
                         UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
                     )
-                    logger.info("Successfully imported all models")
+                    logger.info("Successfully imported models")
                     models_imported = True
                 except ImportError as ie:
                     logger.warning("Could not import models", import_error=str(ie), service=service_name)
@@ -106,12 +117,14 @@ async def init_database():
                 # Services like search that don't need full models
                 logger.info("Skipping model imports for service", service=service_name)
             
-            # Create all tables (only if models are registered)
+            # NOTE: Base.metadata.create_all is typically NOT recommended when using Alembic
+            # as it bypasses the migration history. We keep it as a fallback but log a warning.
             if models_imported or Base.metadata.tables:
-                await conn.run_sync(Base.metadata.create_all)
-                logger.info("Database tables created")
+                # await conn.run_sync(Base.metadata.create_all)
+                # logger.info("Database tables created via create_all (NOTE: Use alembic instead)")
+                logger.info("Database models registered. Skipping create_all in favor of Alembic migrations.")
             else:
-                logger.info("No models to create tables for")
+                logger.info("No models to register")
             
         logger.info("Database initialized successfully")
         

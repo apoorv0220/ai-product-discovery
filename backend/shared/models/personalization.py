@@ -1,18 +1,18 @@
 """
-User Interaction Models for Personalized Search
+User Interaction Models for Personalized Search (DEPRECATED)
 SQLAlchemy models for tracking user behavior and search interactions
+NOTE: These models are deprecated and replaced by the consolidated analytics system.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, JSON, Index, ForeignKey
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 from datetime import datetime
 
 # Import Base from shared.database.base instead of creating a new one
 from shared.database.base import Base
 
 class UserSearchHistory(Base):
-    """Tracks user search queries for personalization"""
+    """Tracks user search queries for personalization (DEPRECATED)"""
     __tablename__ = 'user_search_history'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -40,7 +40,7 @@ class UserSearchHistory(Base):
     )
 
 class UserProductViews(Base):
-    """Tracks product page views for personalization"""
+    """Tracks product page views for personalization (DEPRECATED)"""
     __tablename__ = 'user_product_views'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -78,7 +78,7 @@ class UserProductViews(Base):
     )
 
 class UserSearchClicks(Base):
-    """Tracks clicks on search results for personalization"""
+    """Tracks clicks on search results for personalization (DEPRECATED)"""
     __tablename__ = 'user_search_clicks'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -132,5 +132,3 @@ class PersonalizedSearchWeights(Base):
         Index('idx_search_weights_merchant_user_session_product', 'merchant_id', 'user_id', 'session_id', 'product_id', unique=True),
         Index('idx_search_weights_merchant_weight_updated_at', 'merchant_id', 'weight', 'updated_at'),
     )
-
-

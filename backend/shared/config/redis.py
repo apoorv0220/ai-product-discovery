@@ -13,10 +13,17 @@ import redis
 from typing import Optional, Any, Dict, List
 import json
 import pickle
-from datetime import timedelta
+from datetime import datetime, timedelta, date
 from shared.config.settings import get_settings
 
 settings = get_settings()
+
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 
 def get_redis_client():
@@ -92,14 +99,19 @@ class CacheManager:
     
     async def get_async_redis(self) -> redis_async.Redis:
         """Get or create async Redis connection"""
-        if self.redis_async is None:
+        import asyncio
+        current_loop = asyncio.get_running_loop()
+        
+        if self.redis_async is None or getattr(self, '_loop', None) != current_loop:
             self.redis_async = await RedisConfig.get_async_connection()
+            self._loop = current_loop
+            
         return self.redis_async
     
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """Set value in cache (sync)"""
         try:
-            serialized_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            serialized_value = json.dumps(value, default=json_serial) if isinstance(value, (dict, list)) else str(value)
             return self.redis_sync.setex(key, ttl or 3600, serialized_value)
         except Exception:
             return False
@@ -108,7 +120,7 @@ class CacheManager:
         """Set value in cache (async)"""
         try:
             redis = await self.get_async_redis()
-            serialized_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            serialized_value = json.dumps(value, default=json_serial) if isinstance(value, (dict, list)) else str(value)
             await redis.setex(key, ttl or 3600, serialized_value)
             return True
         except Exception:
@@ -319,7 +331,7 @@ class AnalyticsBuffer:
             
             # Add to queue
             queue_key = RedisConfig.build_key('analytics', 'events_queue')
-            success = bool(self.redis_sync.lpush(queue_key, json.dumps(event_data)))
+            success = bool(self.redis_sync.lpush(queue_key, json.dumps(event_data, default=json_serial)))
             
             # Mark as seen for deduplication
             if success and check_duplicate:
