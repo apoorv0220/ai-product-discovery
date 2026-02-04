@@ -19,6 +19,7 @@ class EventType(str, Enum):
     SEARCH_CLICK = "search_click"  # Click on search result
     ADD_TO_CART = "add_to_cart"
     REMOVE_FROM_CART = "remove_from_cart"
+    CHECKOUT_START = "checkout_start"
     PURCHASE = "purchase"
     WISHLIST_ADD = "wishlist_add"
     RECOMMENDATION_CLICK = "recommendation_click"
@@ -35,6 +36,8 @@ class AnalyticsEventSchema(BaseModel):
     user_id: Optional[Union[str, int]] = Field(None, description="User ID (string or int, optional)")
     session_id: Optional[str] = Field(None, description="Session identifier (optional)")
     product_id: Optional[int] = Field(None, description="Product ID (optional)")
+    experiment_id: Optional[int] = Field(None, description="A/B test experiment ID (optional)")
+    variant_id: Optional[int] = Field(None, description="A/B test variant ID (optional)")
 
     # Context fields
     platform: Optional[str] = Field(None, max_length=50, description="Platform (e.g., magento, woocommerce)")

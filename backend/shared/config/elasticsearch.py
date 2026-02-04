@@ -11,8 +11,6 @@ AI Product Discovery Suite - Elasticsearch Configuration
 from typing import Dict, Any
 from shared.config.settings import get_settings
 
-settings = get_settings()
-
 
 # Elasticsearch index mappings
 PRODUCT_INDEX_MAPPING = {
@@ -320,6 +318,7 @@ ANALYTICS_ILM_POLICY = {
 
 def get_index_name(base_name: str, store_id: int = None) -> str:
     """Get index name with optional store prefix"""
+    settings = get_settings()
     prefix = settings.ELASTICSEARCH_INDEX_PREFIX
     if store_id:
         return f"{prefix}_{base_name}_store_{store_id}"

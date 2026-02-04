@@ -16,8 +16,6 @@ import pickle
 from datetime import datetime, timedelta, date
 from shared.config.settings import get_settings
 
-settings = get_settings()
-
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -68,6 +66,7 @@ class RedisConfig:
     @classmethod
     def get_sync_connection(cls) -> redis.Redis:
         """Get synchronous Redis connection"""
+        settings = get_settings()
         return redis.from_url(
             settings.REDIS_URL,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
@@ -77,6 +76,7 @@ class RedisConfig:
     @classmethod
     async def get_async_connection(cls) -> redis_async.Redis:
         """Get asynchronous Redis connection"""
+        settings = get_settings()
         return await redis_async.from_url(
             settings.REDIS_URL,
             max_connections=settings.REDIS_MAX_CONNECTIONS,

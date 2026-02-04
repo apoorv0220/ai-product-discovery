@@ -15,10 +15,50 @@ from sqlalchemy import select, func, and_, or_, distinct
 import structlog
 
 from shared.database.base import AsyncSessionLocal
-from shared.models.analytics import UserBehaviorAggregation
+from shared.models.analytics import UserBehaviorAggregation, AnalyticsEvent, SessionAnalytics
 from core.dashboard_queries import DashboardQueryService
 
 logger = structlog.get_logger()
+
+
+class BehavioralTagger:
+    """Service for assigning behavioral tags to users based on history"""
+    
+    def __init__(self):
+        self.thresholds = {
+            'high_spender_revenue': 500.0,
+            'frequent_searcher_count': 10,
+            'window_shopper_views': 20,
+            'loyal_customer_purchases': 3
+        }
+
+    async def tag_user(self, behavior: UserBehaviorAggregation) -> List[str]:
+        """Assign tags to a user based on their behavior aggregation"""
+        tags = []
+        
+        # 1. High Spender
+        if (behavior.total_revenue or 0) > self.thresholds['high_spender_revenue']:
+            tags.append("High Spender")
+            
+        # 2. Frequent Searcher
+        if (behavior.searches or 0) > self.thresholds['frequent_searcher_count']:
+            tags.append("Frequent Searcher")
+            
+        # 3. Window Shopper (High views, no purchases)
+        if (behavior.product_views or 0) > self.thresholds['window_shopper_views'] and (behavior.purchases or 0) == 0:
+            tags.append("Window Shopper")
+            
+        # 4. Loyal Customer
+        if (behavior.purchases or 0) >= self.thresholds['loyal_customer_purchases']:
+            tags.append("Loyal Customer")
+            
+        # 5. Category Loyal (Top category affinity > 0.7)
+        if behavior.category_affinity:
+            top_cat = max(behavior.category_affinity.values()) if behavior.category_affinity else 0
+            if top_cat > 0.7:
+                tags.append("Category Specialist")
+                
+        return tags
 
 
 class UserSegmentationService:

@@ -11,17 +11,23 @@ Configuration for Qdrant vector database.
 from typing import Optional
 from shared.config.settings import get_settings
 
-settings = get_settings()
 
+# Qdrant connection configuration (lazy loaded)
+def _get_qdrant_config():
+    settings = get_settings()
+    return {
+        "url": settings.QDRANT_URL,
+        "api_key": settings.QDRANT_API_KEY,  # Set if using Qdrant Cloud
+        "timeout": 30,
+        "prefer_grpc": False,  # Use HTTP by default
+        "https": False
+    }
 
-# Qdrant connection configuration
-QDRANT_CONFIG = {
-    "url": settings.QDRANT_URL,
-    "api_key": settings.QDRANT_API_KEY,  # Set if using Qdrant Cloud
-    "timeout": 30,
-    "prefer_grpc": False,  # Use HTTP by default
-    "https": False
-}
+def get_qdrant_config():
+    return _get_qdrant_config()
+
+# For backward compatibility
+QDRANT_CONFIG = property(get_qdrant_config)
 
 
 # Collection configurations

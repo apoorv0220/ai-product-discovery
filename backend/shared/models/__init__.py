@@ -23,6 +23,10 @@ from shared.models.analytics import (  # noqa: F401
     UserBehaviorAggregation,
     SessionAnalytics,
     AnalyticsEventArchive,
+    Experiment,
+    ExperimentVariant,
+    ConversionFunnel,
+    FunnelStep,
 )
 from shared.models.recommendation import ProductSimilarity  # noqa: F401
 
@@ -49,6 +53,10 @@ __all__ = [
     "UserBehaviorAggregation",
     "SessionAnalytics",
     "AnalyticsEventArchive",
+    "Experiment",
+    "ExperimentVariant",
+    "ConversionFunnel",
+    "FunnelStep",
     "ProductSimilarity",
     # Personalization models
     "UserSearchHistory",

@@ -37,6 +37,8 @@ class EventRequest(BaseModel):
     user_agent: Optional[str] = None
     referrer: Optional[str] = None
     revenue: Optional[float] = None
+    experiment_id: Optional[int] = None
+    variant_id: Optional[int] = None
     properties: Optional[Dict[str, Any]] = None
 
     @model_validator(mode='after')
@@ -49,41 +51,87 @@ class EventRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "examples": [
-                # Session-based tracking (existing behavior)
+                # Product-view tracking
                 {
-                    "event_type": "product_view",
-                    "session_id": "sess_123456789",
-                    "product_id": 158,
-                    "platform": "magento",
-                    "device_type": "desktop",
-                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "referrer": "https://store.example.com/search?q=laptop",
-                    "properties": {
-                        "page_url": "/products/hero-hoodie.html",
-                        "categories": ["Hoodies & Sweatshirts"],
-                        "price": 59.99
+                    "summary": "Product View",
+                    "description": "Standard product detail page view tracking",
+                    "value": {
+                        "event_type": "product_view",
+                        "session_id": "sess_123456789",
+                        "product_id": 158,
+                        "platform": "magento",
+                        "device_type": "desktop",
+                        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "referrer": "https://store.example.com/search?q=hoodie",
+                        "properties": {
+                            "page_url": "/products/hero-hoodie.html",
+                            "categories": ["Hoodies & Sweatshirts"],
+                            "price": 59.99
+                        }
                     }
                 },
-                # User-based tracking (new capability)
+                # Cart-add tracking
                 {
-                    "event_type": "purchase",
-                    "user_id": "user_12345",  # String user ID from search service
-                    "product_id": 158,
-                    "revenue": 59.99,
-                    "platform": "magento",
-                    "properties": {
-                        "order_id": "ORD-12345",
-                        "currency": "USD"
+                    "summary": "Add to Cart",
+                    "description": "Track when a user adds an item to their cart",
+                    "value": {
+                        "event_type": "add_to_cart",
+                        "session_id": "sess_123456789",
+                        "product_id": 158,
+                        "platform": "magento",
+                        "properties": {
+                            "qty": 1,
+                            "price": 59.99,
+                            "currency": "USD"
+                        }
                     }
                 },
-                # Mixed tracking (user + session)
+                # Checkout-start tracking
                 {
-                    "event_type": "search",
-                    "user_id": 123,  # Integer user ID
-                    "session_id": "sess_987654321",
-                    "properties": {
-                        "query": "wireless headphones",
-                        "results_count": 25
+                    "summary": "Checkout Start",
+                    "description": "Track when a user enters the checkout process",
+                    "value": {
+                        "event_type": "checkout_start",
+                        "session_id": "sess_123456789",
+                        "platform": "magento",
+                        "properties": {
+                            "cart_value": 119.98,
+                            "items_count": 2,
+                            "step": "shipping_method"
+                        }
+                    }
+                },
+                # Purchase tracking
+                {
+                    "summary": "Purchase (Conversion)",
+                    "description": "Successful order completion",
+                    "value": {
+                        "event_type": "purchase",
+                        "user_id": "user_12345",
+                        "session_id": "sess_123456789",
+                        "product_id": 158,
+                        "revenue": 59.99,
+                        "platform": "magento",
+                        "properties": {
+                            "order_id": "ORD-12345",
+                            "currency": "USD",
+                            "payment_method": "paypal",
+                            "items": [{"id": 158, "qty": 1, "price": 59.99}]
+                        }
+                    }
+                },
+                # Search-query tracking
+                {
+                    "summary": "Search Query",
+                    "description": "Manual search query tracking (typically handled auto via Redis)",
+                    "value": {
+                        "event_type": "search_query",
+                        "session_id": "sess_987654321",
+                        "properties": {
+                            "query": "wireless headphones",
+                            "results_count": 25,
+                            "filters_applied": ["brand:sony"]
+                        }
                     }
                 }
             ]
@@ -173,6 +221,8 @@ async def track_event(event: EventRequest, request: Request):
             "user_agent": event.user_agent,
             "referrer": event.referrer,
             "revenue": event.revenue,
+            "experiment_id": event.experiment_id,
+            "variant_id": event.variant_id,
             "properties": event.properties or {},
             "timestamp": datetime.utcnow(),
             "event_id": str(uuid.uuid4())

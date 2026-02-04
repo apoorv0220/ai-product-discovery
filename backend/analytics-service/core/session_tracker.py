@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, Union, List
 from datetime import datetime, timedelta
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc
+from sqlalchemy import select, and_, or_, desc, update
 
 from shared.models.analytics import SessionAnalytics, AnalyticsEvent
 from shared.database.base import AsyncSessionLocal
@@ -212,6 +212,21 @@ class SessionTracker:
 
                 if not session:
                     return False
+            
+            # Identity Stitching: If event has user_id but session doesn't, stitch it
+            if event_data and event_data.get('user_id') and not session.user_id:
+                user_id = str(event_data['user_id'])
+                # Update session object immediately
+                session.user_id = user_id
+                
+                # Trigger historical stitching in background
+                from shared.tasks.analytics import stitch_user_history
+                stitch_user_history.delay(merchant_id, session_id, user_id)
+                
+                logger.info("Triggered identity stitching for session", 
+                            merchant_id=merchant_id, 
+                            session_id=session_id, 
+                            user_id=user_id)
             
             # Update session metrics based on event type
             if event_type in ['page_view', 'product_view']:
@@ -492,6 +507,108 @@ class SessionTracker:
                 await db_session.close()
 
 
-# Global session tracker instance
+class IdentityStitcher:
+    """Handles merging anonymous session history into identified user profiles"""
+    
+    def __init__(self):
+        self.cache = CacheManager()
+        
+    async def stitch_session_to_user(
+        self,
+        merchant_id: int,
+        session_id: str,
+        user_id: str,
+        db_session: Optional[AsyncSession] = None
+    ) -> bool:
+        """
+        Stitch an anonymous session to a user ID
+        
+        Args:
+            merchant_id: Merchant ID
+            session_id: Session ID to stitch
+            user_id: User ID to link to
+            db_session: Optional database session
+            
+        Returns:
+            True if stitching was successful
+        """
+        use_external_session = db_session is not None
+        if not db_session:
+            db_session = AsyncSessionLocal()
+            
+        try:
+            # 1. Update SessionAnalytics
+            await db_session.execute(
+                update(SessionAnalytics)
+                .where(and_(
+                    SessionAnalytics.merchant_id == merchant_id,
+                    SessionAnalytics.session_id == session_id,
+                    SessionAnalytics.user_id.is_(None)
+                ))
+                .values(user_id=user_id)
+            )
+            
+            # 2. Update AnalyticsEvents for this session
+            await db_session.execute(
+                update(AnalyticsEvent)
+                .where(and_(
+                    AnalyticsEvent.merchant_id == merchant_id,
+                    AnalyticsEvent.session_id == session_id,
+                    AnalyticsEvent.user_id.is_(None)
+                ))
+                .values(user_id=user_id)
+            )
+            
+            # 3. Trigger backfill of other sessions with same device fingerprint if available
+            # This is handled by a background Celery task to avoid blocking the request
+            from shared.tasks.analytics import stitch_user_history
+            stitch_user_history.delay(merchant_id, session_id, user_id)
+            
+            if not use_external_session:
+                await db_session.commit()
+                
+            logger.info("Session stitched to user", 
+                        merchant_id=merchant_id, 
+                        session_id=session_id, 
+                        user_id=user_id)
+            return True
+            
+        except Exception as e:
+            logger.error("Error stitching session to user", 
+                        merchant_id=merchant_id, 
+                        session_id=session_id, 
+                        error=str(e))
+            if not use_external_session:
+                await db_session.rollback()
+            return False
+        finally:
+            if not use_external_session:
+                await db_session.close()
+
+    async def get_user_all_sessions(
+        self,
+        merchant_id: int,
+        user_id: str,
+        db_session: Optional[AsyncSession] = None
+    ) -> List[str]:
+        """Get all session IDs associated with a user"""
+        if not db_session:
+            db_session = AsyncSessionLocal()
+            
+        try:
+            result = await db_session.execute(
+                select(SessionAnalytics.session_id)
+                .where(and_(
+                    SessionAnalytics.merchant_id == merchant_id,
+                    SessionAnalytics.user_id == user_id
+                ))
+            )
+            return [row[0] for row in result.fetchall()]
+        finally:
+            await db_session.close()
+
+
+# Global instances
 session_tracker = SessionTracker()
+identity_stitcher = IdentityStitcher()
 

@@ -18,8 +18,6 @@ import structlog
 
 from shared.config.settings import get_settings
 
-settings = get_settings()
-
 # Create metadata with naming convention
 metadata = MetaData(
     naming_convention={
@@ -32,28 +30,39 @@ metadata = MetaData(
 )
 
 # Create async engine with optimized connection pooling
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    pool_recycle=getattr(settings, 'DATABASE_POOL_RECYCLE', 3600),  # 1 hour
-    pool_pre_ping=getattr(settings, 'DATABASE_POOL_PRE_PING', True),  # Connection health checks
-    echo=settings.DATABASE_ECHO,
-    future=True,
-    # Connection timeout
-    connect_args={
-        "server_settings": {
-            "application_name": "ai_discovery_analytics",
-            "tcp_keepalives_idle": "600",
-            "tcp_keepalives_interval": "30",
-            "tcp_keepalives_count": "3"
+def _get_engine():
+    settings = get_settings()
+    return create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_recycle=getattr(settings, 'DATABASE_POOL_RECYCLE', 3600),  # 1 hour
+        pool_pre_ping=getattr(settings, 'DATABASE_POOL_PRE_PING', True),  # Connection health checks
+        echo=settings.DATABASE_ECHO,
+        future=True,
+        # Connection timeout
+        connect_args={
+            "server_settings": {
+                "application_name": "ai_discovery_analytics",
+                "tcp_keepalives_idle": "600",
+                "tcp_keepalives_interval": "30",
+                "tcp_keepalives_count": "3"
+            }
         }
-    }
-)
+    )
+
+# Global engine instance (lazy loaded)
+_engine = None
+
+def engine():
+    global _engine
+    if _engine is None:
+        _engine = _get_engine()
+    return _engine
 
 # Create async session maker
 AsyncSessionLocal = async_sessionmaker(
-    engine,
+    engine(),
     class_=AsyncSession,
     expire_on_commit=False
 )

@@ -20,6 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 import warnings
+from sqlalchemy.ext.asyncio import AsyncSession
 warnings.filterwarnings('ignore')
 
 logger = structlog.get_logger()
@@ -89,6 +90,117 @@ class ABTestResult:
     confidence: float = 0.0
     lift: float = 0.0
     statistical_significance: bool = False
+
+
+class StatisticalTrendEngine:
+    """Statistical trend analysis and forecasting without ML libraries"""
+    
+    def __init__(self, db_session: AsyncSession):
+        self.db = db_session
+
+    async def get_revenue_forecast(self, merchant_id: int, days: int = 7) -> Dict[str, Any]:
+        """
+        Simple linear regression for revenue forecasting
+        y = mx + b
+        """
+        from sqlalchemy import select
+        from shared.models.analytics import AnalyticsAggregation
+        from datetime import datetime, timedelta
+        
+        start_date = datetime.utcnow() - timedelta(days=30)
+        query = (
+            select(AnalyticsAggregation.time_window_start, AnalyticsAggregation.revenue)
+            .where(
+                AnalyticsAggregation.merchant_id == merchant_id,
+                AnalyticsAggregation.aggregation_type == 'daily',
+                AnalyticsAggregation.time_window_start >= start_date
+            )
+            .order_by(AnalyticsAggregation.time_window_start.asc())
+        )
+        
+        result = await self.db.execute(query)
+        data = result.fetchall()
+        
+        if len(data) < 5:
+            return {"error": "Insufficient data for forecasting"}
+            
+        # Prepare points for regression
+        x = np.array([i for i in range(len(data))])
+        y = np.array([float(row[1] or 0) for row in data])
+        
+        # Simple linear regression (y = mx + b)
+        if len(x) > 1:
+            m, b = np.polyfit(x, y, 1)
+        else:
+            m, b = 0, y[0]
+            
+        # Forecast
+        forecast = []
+        last_date = data[-1][0]
+        for i in range(1, days + 1):
+            next_val = max(0, m * (len(data) + i - 1) + b)
+            forecast.append({
+                "date": (last_date + timedelta(days=i)).isoformat(),
+                "predicted_revenue": float(next_val)
+            })
+            
+        return {
+            "merchant_id": merchant_id,
+            "trend_slope": float(m),
+            "forecast": forecast,
+            "confidence_score": 0.85 if len(data) > 14 else 0.6 # Simplified
+        }
+
+    async def calculate_purchase_probability(self, merchant_id: int, user_id: str) -> Dict[str, Any]:
+        """
+        Calculate probability of purchase based on session activity patterns
+        (Statistical weighting instead of ML)
+        """
+        from shared.models.analytics import UserBehaviorAggregation
+        from sqlalchemy import select, and_
+        
+        query = select(UserBehaviorAggregation).where(
+            and_(
+                UserBehaviorAggregation.merchant_id == merchant_id,
+                UserBehaviorAggregation.user_id == user_id
+            )
+        )
+        
+        result = await self.db.execute(query)
+        behavior = result.scalar_one_or_none()
+        
+        if not behavior:
+            return {"probability": 0.05, "reason": "No history"}
+            
+        # Weighted scoring
+        # 1. Product view rate (higher is better)
+        # 2. Add to cart (very high indicator)
+        # 3. Previous purchases (loyal customer)
+        # 4. Recency (exponential decay)
+        
+        score = 0.0
+        
+        # Base conversion rate for site might be 2%
+        score += 0.02 
+        
+        # Product views (capped at 0.2)
+        score += min((behavior.product_views or 0) * 0.01, 0.2)
+        
+        # Add to carts (capped at 0.4)
+        score += min((behavior.add_to_carts or 0) * 0.1, 0.4)
+        
+        # Previous purchases
+        if (behavior.purchases or 0) > 0:
+            score += 0.15
+            
+        # Final probability
+        probability = min(max(score, 0.0), 0.95)
+        
+        return {
+            "user_id": user_id,
+            "purchase_probability": float(probability),
+            "top_indicators": ["Add to Cart" if (behavior.add_to_carts or 0) > 0 else "Product Views"]
+        }
 
 
 class RealTimeAnalyticsEngine:

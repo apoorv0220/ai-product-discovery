@@ -69,7 +69,7 @@ from shared.middleware.rate_limiter import RateLimitMiddleware
 from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import dashboard, reports, health, tracking, metrics
+from api import dashboard, reports, health, tracking, metrics, events, experiments, funnels
 from core.processor import EventProcessor
 from core.aggregator import DataAggregator
 from core.event_subscriber import EventSubscriber
@@ -293,6 +293,9 @@ async def prometheus_metrics():
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(events.router, prefix="/api/v1/events", tags=["events"])
+app.include_router(experiments.router, prefix="/api/v1/experiments", tags=["experiments"])
+app.include_router(funnels.router, prefix="/api/v1/funnels", tags=["funnels"])
 app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])  
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])

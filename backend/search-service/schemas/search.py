@@ -221,7 +221,10 @@ class SearchRequest(BaseModel):
                     "purchase_history": ["prod_4"],
                     "device_type": "mobile"
                 },
-                "personalize": False
+                "personalize": True,
+                "search_type": "hybrid",
+                "keyword_weight": 0.7,
+                "semantic_weight": 0.3
             }
         }
 

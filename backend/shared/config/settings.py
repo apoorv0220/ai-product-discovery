@@ -56,36 +56,35 @@ class Settings(BaseSettings):
             os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_')  # Container naming pattern
         )
 
+        env_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST'))
+        env_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT'))
+
         if in_container:
-            # Running inside Docker container - use container network
-            # Override localhost if it comes from .env but we are inside a container
-            env_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST'))
-            if env_host == 'localhost' or not env_host:
-                db_host = 'postgres'
-            else:
-                db_host = env_host
-                
-            env_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT'))
-            if env_port == '7010' or not env_port:
-                db_port = '5432'
-            else:
-                db_port = env_port
+            # Inside Docker: use 'postgres' and 5432
+            db_host = env_host if env_host and env_host != 'localhost' else 'postgres'
+            db_port = env_port if env_port and env_port != '7010' else '5432'
         else:
-            # Running on host machine
-            db_host = os.getenv('POSTGRES_HOST', os.getenv('DB_HOST', 'localhost'))
-            db_port = os.getenv('POSTGRES_PORT', os.getenv('DB_PORT', '7010'))
+            # On Host: use 'localhost' and 7010
+            db_host = env_host if env_host and env_host != 'postgres' else 'localhost'
+            db_port = env_port if env_port and env_port != '5432' else '7010'
 
         db_name = os.getenv('POSTGRES_DB', os.getenv('DB_NAME', 'ai_discovery'))
         db_user = os.getenv('POSTGRES_USER', os.getenv('DB_USER'))
         db_password = os.getenv('POSTGRES_PASSWORD', os.getenv('DB_PASSWORD'))
         if not db_user or not db_password:
             raise ValueError("Database credentials not found. Please set POSTGRES_USER/POSTGRES_PASSWORD or DB_USER/DB_PASSWORD environment variables.")
+        
         default_db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
         # If DATABASE_URL is in environment, use it unless we are in a container and it points to localhost
         env_db_url = os.getenv('DATABASE_URL')
-        if env_db_url and not (in_container and 'localhost' in env_db_url):
-            self.DATABASE_URL = env_db_url
+        if env_db_url:
+            if in_container and 'localhost' in env_db_url:
+                self.DATABASE_URL = default_db_url
+            elif not in_container and ('postgres' in env_db_url and not 'postgresql' in env_db_url): 
+                self.DATABASE_URL = default_db_url
+            else:
+                self.DATABASE_URL = env_db_url
         else:
             self.DATABASE_URL = default_db_url
             
@@ -100,26 +99,26 @@ class Settings(BaseSettings):
             (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
         )
 
-        if in_container:
-            # Running inside Docker container - use internal Docker network names
-            redis_host = 'redis'
-            redis_port = '6379'
-            redis_password = os.getenv('REDIS_PASSWORD', '')
-            
-            auth_part = f":{redis_password}@" if redis_password else ""
-            default_redis_url = f"redis://{auth_part}{redis_host}:{redis_port}/0"
-            default_celery_broker = f"redis://{auth_part}{redis_host}:{redis_port}/1"
-            default_celery_backend = f"redis://{auth_part}{redis_host}:{redis_port}/2"
-        else:
-            # Running on host machine - use external mapped ports
-            redis_host = os.getenv('REDIS_HOST', 'localhost')
-            redis_port = os.getenv('REDIS_PORT', '6379')
-            redis_password = os.getenv('REDIS_PASSWORD', '')
+        # Get values from environment
+        env_redis_host = os.getenv('REDIS_HOST')
+        env_redis_port = os.getenv('REDIS_PORT')
+        redis_password = os.getenv('REDIS_PASSWORD', '')
 
-            auth_part = f":{redis_password}@" if redis_password else ""
-            default_redis_url = f"redis://{auth_part}{redis_host}:{redis_port}/0"
-            default_celery_broker = f"redis://{auth_part}{redis_host}:{redis_port}/1"
-            default_celery_backend = f"redis://{auth_part}{redis_host}:{redis_port}/2"
+        if in_container:
+            # Inside Docker: use container network names and internal ports
+            # If REDIS_HOST is 'localhost' in .env but we are in a container, override to 'redis'
+            redis_host = env_redis_host if env_redis_host and env_redis_host != 'localhost' else 'redis'
+            redis_port = env_redis_port if env_redis_port and env_redis_port != '7011' else '6379'
+        else:
+            # On Host: use localhost and external mapped ports
+            # If REDIS_HOST is 'redis' in .env but we are on host, override to 'localhost'
+            redis_host = env_redis_host if env_redis_host and env_redis_host != 'redis' else 'localhost'
+            redis_port = env_redis_port if env_redis_port and env_redis_port != '6379' else '7011'
+
+        auth_part = f":{redis_password}@" if redis_password else ""
+        default_redis_url = f"redis://{auth_part}{redis_host}:{redis_port}/0"
+        default_celery_broker = f"redis://{auth_part}{redis_host}:{redis_port}/1"
+        default_celery_backend = f"redis://{auth_part}{redis_host}:{redis_port}/2"
 
         self.REDIS_URL = os.getenv('REDIS_URL', default_redis_url)
         self.CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', default_celery_broker)
@@ -135,16 +134,19 @@ class Settings(BaseSettings):
             (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
         )
 
-        if in_container:
-            # Running inside Docker container
-            default_es_url = "http://elasticsearch:9200"
-        else:
-            # Running on host machine
-            es_host = os.getenv('ELASTICSEARCH_HOST', 'localhost')
-            es_port = os.getenv('ELASTICSEARCH_PORT', os.getenv('ELASTICSEARCH_EXTERNAL_PORT', '7020'))
-            default_es_url = f"http://{es_host}:{es_port}"
+        env_host = os.getenv('ELASTICSEARCH_HOST')
+        env_port = os.getenv('ELASTICSEARCH_PORT', os.getenv('ELASTICSEARCH_EXTERNAL_PORT'))
 
-        self.ELASTICSEARCH_URL = os.getenv('ELASTICSEARCH_URL', default_es_url)
+        if in_container:
+            # Inside Docker: use 'elasticsearch' and 9200
+            es_host = env_host if env_host and env_host != 'localhost' else 'elasticsearch'
+            es_port = env_port if env_port and env_port != '7020' else '9200'
+        else:
+            # On Host: use 'localhost' and 7020
+            es_host = env_host if env_host and env_host != 'elasticsearch' else 'localhost'
+            es_port = env_port if env_port and env_port != '9200' else '7020'
+
+        self.ELASTICSEARCH_URL = os.getenv('ELASTICSEARCH_URL', f"http://{es_host}:{es_port}")
         self._es_configured = True
 
     def _configure_qdrant(self):
@@ -156,20 +158,23 @@ class Settings(BaseSettings):
             (os.getenv('HOSTNAME') and os.getenv('HOSTNAME').startswith('ai_discovery_'))
         )
 
-        if in_container:
-            # Running inside Docker container
-            default_qdrant_url = "http://qdrant:6333"
-            default_qdrant_grpc = 6334
-        else:
-            # Running on host machine
-            qdrant_host = os.getenv('QDRANT_HOST', 'localhost')
-            qdrant_port = os.getenv('QDRANT_PORT', os.getenv('QDRANT_EXTERNAL_PORT', '7021'))
-            qdrant_grpc_port = os.getenv('QDRANT_GRPC_PORT', os.getenv('QDRANT_GRPC_EXTERNAL_PORT', '7022'))
-            default_qdrant_url = f"http://{qdrant_host}:{qdrant_port}"
-            default_qdrant_grpc = int(qdrant_grpc_port)
+        env_host = os.getenv('QDRANT_HOST')
+        env_port = os.getenv('QDRANT_PORT', os.getenv('QDRANT_EXTERNAL_PORT'))
+        env_grpc_port = os.getenv('QDRANT_GRPC_PORT', os.getenv('QDRANT_GRPC_EXTERNAL_PORT'))
 
-        self.QDRANT_URL = os.getenv('QDRANT_URL', default_qdrant_url)
-        self.QDRANT_GRPC_PORT = int(os.getenv('QDRANT_GRPC_PORT', default_qdrant_grpc))
+        if in_container:
+            # Inside Docker: use 'qdrant', 6333, and 6334
+            qd_host = env_host if env_host and env_host != 'localhost' else 'qdrant'
+            qd_port = env_port if env_port and env_port != '7021' else '6333'
+            qd_grpc_port = env_grpc_port if env_grpc_port and env_grpc_port != '7022' else '6334'
+        else:
+            # On Host: use 'localhost', 7021, and 7022
+            qd_host = env_host if env_host and env_host != 'qdrant' else 'localhost'
+            qd_port = env_port if env_port and env_port != '6333' else '7021'
+            qd_grpc_port = env_grpc_port if env_grpc_port and env_grpc_port != '6334' else '7022'
+
+        self.QDRANT_URL = os.getenv('QDRANT_URL', f"http://{qd_host}:{qd_port}")
+        self.QDRANT_GRPC_PORT = int(qd_grpc_port)
         self._qdrant_configured = True
 
     # Application

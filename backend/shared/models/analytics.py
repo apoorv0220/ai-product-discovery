@@ -3,7 +3,7 @@ Analytics Event Model
 Event tracking
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Index, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, DateTime, Index, ForeignKey, Float, Boolean, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from datetime import datetime
@@ -25,8 +25,12 @@ class AnalyticsEvent(Base):
     )
     event_type = Column(String(50), nullable=False, index=True)
     user_id = Column(String(255), nullable=True, index=True)  # Support both string and int user IDs
-    session_id = Column(String(36), nullable=True, index=True)  # Made optional
+    session_id = Column(String(255), nullable=True, index=True)  # Made optional
     product_id = Column(Integer, nullable=True, index=True) # No longer a ForeignKey
+    
+    # A/B Testing fields
+    experiment_id = Column(Integer, nullable=True, index=True)
+    variant_id = Column(Integer, nullable=True, index=True)
     
     # Additional context fields
     platform = Column(String(50))  # e.g., "magento", "woocommerce"
@@ -49,10 +53,118 @@ class AnalyticsEvent(Base):
         Index('idx_analytics_events_user_id', 'user_id'),
         Index('idx_analytics_events_session_id', 'session_id'),
         Index('idx_analytics_events_product_id', 'product_id'),
+        Index('idx_analytics_events_experiment_id', 'experiment_id'),
+        Index('idx_analytics_events_variant_id', 'variant_id'),
         Index('idx_analytics_events_merchant_timestamp', 'merchant_id', 'timestamp'),
         Index('idx_analytics_events_merchant_type_timestamp', 'merchant_id', 'event_type', 'timestamp'),
         Index('idx_analytics_events_merchant_user_timestamp', 'merchant_id', 'user_id', 'timestamp'),
         Index('idx_analytics_events_merchant_session_timestamp', 'merchant_id', 'session_id', 'timestamp'),
+    )
+
+
+class Experiment(Base):
+    """A/B Test Experiment model"""
+    __tablename__ = 'experiments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(
+        Integer,
+        ForeignKey('merchants.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    status = Column(String(50), default='active', index=True) # 'active', 'paused', 'completed'
+    start_date = Column(DateTime, default=datetime.utcnow)
+    end_date = Column(DateTime, nullable=True)
+    traffic_allocation = Column(Float, default=1.0) # 0.0 to 1.0
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    merchant = relationship("Merchant", lazy="select")
+    variants = relationship("ExperimentVariant", back_populates="experiment", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index('idx_experiments_merchant_status', 'merchant_id', 'status'),
+    )
+
+
+class ExperimentVariant(Base):
+    """A/B Test Experiment Variant model"""
+    __tablename__ = 'experiment_variants'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    experiment_id = Column(
+        Integer,
+        ForeignKey('experiments.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    weight = Column(Float, default=0.5) # Allocation within experiment
+    configuration = Column(JSONB) # Variant-specific settings/UI changes
+    is_control = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    experiment = relationship("Experiment", back_populates="variants")
+
+
+class ConversionFunnel(Base):
+    """Conversion Funnel Definition"""
+    __tablename__ = 'conversion_funnels'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    merchant_id = Column(
+        Integer,
+        ForeignKey('merchants.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    is_active = Column(Boolean, default=True, index=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    merchant = relationship("Merchant", lazy="select")
+    steps = relationship("FunnelStep", back_populates="funnel", cascade="all, delete-orphan", order_by="FunnelStep.step_order")
+
+    __table_args__ = (
+        Index('idx_funnels_merchant_active', 'merchant_id', 'is_active'),
+    )
+
+
+class FunnelStep(Base):
+    """Step within a Conversion Funnel"""
+    __tablename__ = 'funnel_steps'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    funnel_id = Column(
+        Integer,
+        ForeignKey('conversion_funnels.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+    name = Column(String(255), nullable=False)
+    event_type = Column(String(50), nullable=False)
+    step_order = Column(Integer, nullable=False)
+    properties_filter = Column(JSONB) # Optional filtering for specific property values
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    funnel = relationship("ConversionFunnel", back_populates="steps")
+
+    __table_args__ = (
+        Index('idx_funnel_steps_funnel_order', 'funnel_id', 'step_order'),
     )
 
 
@@ -129,6 +241,9 @@ class UserBehaviorAggregation(Base):
     
     # Behavioral patterns stored as JSONB
     behavior_patterns = Column(JSONB)  # e.g., preferred categories, search patterns
+    category_affinity = Column(JSONB)  # {category_id: score}
+    brand_affinity = Column(JSONB)     # {brand_name: score}
+    behavioral_tags = Column(JSONB)    # ["High Spender", "Window Shopper", etc.]
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -217,6 +217,8 @@ class EventProcessor:
                         user_agent=event_data.get('user_agent'),
                         referrer=event_data.get('referrer'),
                         revenue=event_data.get('revenue'),
+                        experiment_id=event_data.get('experiment_id'),
+                        variant_id=event_data.get('variant_id'),
                         properties=event_data.get('properties', {}),
                         timestamp=event_data.get('timestamp', datetime.utcnow())
                     )

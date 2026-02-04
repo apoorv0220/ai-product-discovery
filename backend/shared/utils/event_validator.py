@@ -150,10 +150,19 @@ class EventValidator:
         event_dict = event.dict()
         
         # Sanitize string fields
-        string_fields = ['platform', 'device_type', 'user_agent', 'referrer', 'session_id']
+        # Note: session_id is not HTML-escaped here to maintain correlation with external systems,
+        # but it is still stripped of null bytes and control characters.
+        string_fields = ['platform', 'device_type', 'user_agent', 'referrer']
         for field in string_fields:
             if event_dict.get(field):
                 event_dict[field] = self._sanitize_string(event_dict[field])
+        
+        if event_dict.get('session_id'):
+            # Basic technical sanitization for session_id without HTML escaping
+            val = str(event_dict['session_id'])
+            val = val.replace('\x00', '')
+            val = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', val)
+            event_dict['session_id'] = val.strip()
         
         # Sanitize properties (recursively sanitize string values)
         if event_dict.get('properties'):

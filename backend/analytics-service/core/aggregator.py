@@ -22,6 +22,7 @@ from shared.models.analytics import (
     SessionAnalytics,
 )
 from shared.config.redis import analytics_buffer
+from core.user_segmentation import BehavioralTagger
 
 logger = structlog.get_logger()
 
@@ -31,6 +32,7 @@ class DataAggregator:
     
     def __init__(self):
         self.initialized = False
+        self.behavioral_tagger = BehavioralTagger()
     
     async def initialize(self):
         """Initialize the data aggregator"""
@@ -210,6 +212,14 @@ class DataAggregator:
                         aggregation.purchases += 1
                         revenue = event.get('revenue', 0) or 0
                         aggregation.revenue += float(revenue)
+                    
+                    # Count any other event types in the flexible metrics JSONB
+                    else:
+                        if not aggregation.metrics:
+                            aggregation.metrics = {}
+                        
+                        current_count = aggregation.metrics.get(event_type, 0)
+                        aggregation.metrics[event_type] = current_count + 1
                 
                 # Update unique counts (convert sets to counts for database)
                 aggregation.unique_users = len(unique_users)
@@ -326,19 +336,48 @@ class DataAggregator:
                         session_count=0,
                         avg_session_duration=0.0,
                         last_activity=datetime.utcnow(),
-                        behavior_patterns={}
+                        behavior_patterns={},
+                        category_affinity={},
+                        brand_affinity={},
+                        behavioral_tags=[]
                     )
                     db_session.add(behavior)
                 
                 # Update behavior metrics
                 behavior.total_events += len(user_events)
                 
+                # For time-decayed affinity
+                decay_factor = 0.95 # Weight decay per day or similar, simplified here
+                
                 for event in user_events:
                     event_type = event.get('event_type', '').lower()
+                    properties = event.get('properties', {})
+                    
                     if 'page_view' in event_type:
                         behavior.page_views += 1
                     if 'product_view' in event_type:
                         behavior.product_views += 1
+                        
+                        # Update Category Affinity
+                        cat_ids = properties.get('category_ids')
+                        if cat_ids:
+                            if not behavior.category_affinity:
+                                behavior.category_affinity = {}
+                            
+                            # Increment score for each category
+                            for cat_id in cat_ids:
+                                cat_id_str = str(cat_id)
+                                current_score = behavior.category_affinity.get(cat_id_str, 0.0)
+                                behavior.category_affinity[cat_id_str] = (current_score * decay_factor) + 1.0
+                                
+                        # Update Brand Affinity
+                        brand = properties.get('brand')
+                        if brand:
+                            if not behavior.brand_affinity:
+                                behavior.brand_affinity = {}
+                            current_score = behavior.brand_affinity.get(brand, 0.0)
+                            behavior.brand_affinity[brand] = (current_score * decay_factor) + 1.0
+
                     if 'search' in event_type:
                         behavior.searches += 1
                     if 'add_to_cart' in event_type:
@@ -347,6 +386,18 @@ class DataAggregator:
                         behavior.purchases += 1
                         revenue = event.get('revenue', 0) or 0
                         behavior.total_revenue += float(revenue)
+                    
+                    # Track other behaviors in patterns
+                    if event_type not in ['page_view', 'product_view', 'search', 'add_to_cart', 'purchase']:
+                        if not behavior.behavior_patterns:
+                            behavior.behavior_patterns = {}
+                        
+                        counts = behavior.behavior_patterns.get('event_counts', {})
+                        counts[event_type] = counts.get(event_type, 0) + 1
+                        behavior.behavior_patterns['event_counts'] = counts
+                
+                # Update behavioral tags after metrics update
+                behavior.behavioral_tags = await self.behavioral_tagger.tag_user(behavior)
                 
                 behavior.last_activity = datetime.utcnow()
                 behavior.updated_at = datetime.utcnow()

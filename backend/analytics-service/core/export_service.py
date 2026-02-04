@@ -19,8 +19,9 @@ import structlog
 from core.dashboard_queries import DashboardQueryService
 from core.report_generator import ReportGenerator
 from shared.database.base import AsyncSessionLocal
-from shared.models.analytics import AnalyticsEvent
-from sqlalchemy import select, and_
+from shared.models.analytics import AnalyticsEvent, UserBehaviorAggregation
+from shared.models.recommendation import ProductAffinity
+from sqlalchemy import select, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger()
@@ -47,6 +48,37 @@ class ExportService:
             conditions.append(AnalyticsEvent.timestamp <= naive_date_to)
 
         return and_(*conditions)
+    
+    async def export_user_dna_json(self, merchant_id: int) -> AsyncIterator[str]:
+        """Export User DNA (behavioral profiles) to JSONL"""
+        session = AsyncSessionLocal()
+        try:
+            query = select(UserBehaviorAggregation).where(UserBehaviorAggregation.merchant_id == merchant_id)
+            result = await session.stream_scalars(query)
+            async for behavior in result:
+                dna_dict = {
+                    'user_id': behavior.user_id,
+                    'category_affinity': behavior.category_affinity,
+                    'brand_affinity': behavior.brand_affinity,
+                    'behavioral_tags': behavior.behavioral_tags,
+                    'total_revenue': float(behavior.total_revenue or 0),
+                    'purchases': behavior.purchases
+                }
+                yield json.dumps(dna_dict) + '\n'
+        finally:
+            await session.close()
+
+    async def export_product_affinity_csv(self, merchant_id: int) -> AsyncIterator[str]:
+        """Export Product Affinity matrix to CSV"""
+        session = AsyncSessionLocal()
+        try:
+            query = select(ProductAffinity).where(ProductAffinity.merchant_id == merchant_id)
+            result = await session.stream_scalars(query)
+            yield 'product_a_id,product_b_id,view_co_occurrence,affinity_score\n'
+            async for aff in result:
+                yield f"{aff.product_a_id},{aff.product_b_id},{aff.view_co_occurrence},{aff.affinity_score}\n"
+        finally:
+            await session.close()
     
     async def export_events_csv(
         self,

@@ -8,10 +8,12 @@ AI Product Discovery Suite - Analytics Service Dashboard API
 @license     https://opensource.org/licenses/MIT MIT License
 """
 
-from fastapi import APIRouter, Request, Query, HTTPException, status
-from typing import Dict, Any, Optional
+from fastapi import APIRouter, Request, Query, HTTPException, status, Depends
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
+from shared.database.base import get_db
 
 from shared.middleware.auth import get_merchant_id
 from schemas.dashboard import (
@@ -24,6 +26,8 @@ from schemas.dashboard import (
 from core.dashboard_queries import DashboardQueryService
 from core.dashboard_cache import DashboardCache
 from core.user_segmentation import UserSegmentationService
+from core.anomaly_detector import AnomalyDetector
+from core.advanced_analytics import StatisticalTrendEngine
 
 logger = structlog.get_logger()
 
@@ -34,6 +38,39 @@ query_service = DashboardQueryService()
 cache_service = DashboardCache()
 segmentation_service = UserSegmentationService()
 
+@router.get("/forecast/revenue", summary="Get Revenue Forecast")
+async def get_revenue_forecast(
+    request: Request,
+    days: int = Query(7, ge=1, le=30),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get statistical revenue forecast for the next X days"""
+    merchant_id = get_merchant_id(request)
+    engine = StatisticalTrendEngine(db)
+    return await engine.get_revenue_forecast(merchant_id, days)
+
+@router.get("/predict/purchase/{user_id}", summary="Predict Purchase Probability")
+async def predict_purchase(
+    request: Request,
+    user_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Predict probability of purchase for a specific user"""
+    merchant_id = get_merchant_id(request)
+    engine = StatisticalTrendEngine(db)
+    return await engine.calculate_purchase_probability(merchant_id, user_id)
+
+@router.get("/anomalies", summary="Get Anomaly Report")
+async def get_anomaly_report(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get anomaly detection report for core business metrics.
+    """
+    merchant_id = get_merchant_id(request)
+    detector = AnomalyDetector(db)
+    return await detector.check_all_core_metrics(merchant_id)
 
 @router.get("/overview", response_model=DashboardOverviewResponse,
            summary="Get Dashboard Overview",

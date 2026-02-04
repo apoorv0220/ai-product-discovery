@@ -50,6 +50,39 @@ class ExportRequest(BaseModel):
         }
 
 
+@router.post("/request-async",
+           summary="Request Async Report",
+           description="Trigger a background task to generate a report.")
+async def request_async_report(
+    request: Request,
+    report_type: str = Body(..., embed=True),
+    start_date: Optional[str] = Body(None),
+    end_date: Optional[str] = Body(None),
+    merchant_id: Optional[int] = Query(None)
+):
+    """Request a report to be generated in the background"""
+    try:
+        effective_merchant_id = merchant_id if merchant_id else get_merchant_id(request)
+        
+        from shared.tasks.analytics import generate_report_task
+        task = generate_report_task.delay(
+            effective_merchant_id, 
+            report_type, 
+            start_date, 
+            end_date
+        )
+        
+        return {
+            "success": True,
+            "task_id": task.id,
+            "status": "pending",
+            "message": "Report generation started in background"
+        }
+    except Exception as e:
+        logger.error("Error requesting async report", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/performance",
            summary="Get Performance Report",
            description="""
@@ -198,7 +231,7 @@ async def export_data(
         effective_merchant_id = merchant_id if merchant_id else get_merchant_id(request)
         
         # Validate export_type
-        valid_export_types = ['events', 'time_series', 'report']
+        valid_export_types = ['events', 'time_series', 'report', 'user_dna', 'product_affinity']
         if export_request.export_type not in valid_export_types:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -304,6 +337,26 @@ async def export_data(
                     media_type="application/json",
                     headers={
                         "Content-Disposition": f"attachment; filename=timeseries_{metric_name}_{period}_{datetime.utcnow().strftime('%Y%m%d')}.json"
+                    }
+                )
+        
+        elif export_request.export_type == 'user_dna':
+            generator = export_service.export_user_dna_json(effective_merchant_id)
+            return StreamingResponse(
+                generator,
+                media_type="application/x-ndjson",
+                headers={
+                    "Content-Disposition": f"attachment; filename=user_dna_{effective_merchant_id}.jsonl"
+                }
+            )
+            
+        elif export_request.export_type == 'product_affinity':
+            generator = export_service.export_product_affinity_csv(effective_merchant_id)
+            return StreamingResponse(
+                generator,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=product_affinity_{effective_merchant_id}.csv"
                     }
                 )
         
