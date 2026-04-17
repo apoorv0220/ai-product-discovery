@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merchandising Rules API - Complete Reference</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-left: 10px;
+            border-left: 4px solid #3498db;
+        }
+
+        h3 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+
+        .toc {
+            background: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+        }
+
+        .toc ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+
+        .toc a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        th {
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            position: relative;
+        }
+
+        pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+
+        .copy-btn:hover {
+            background: #2980b9;
+        }
+
+        .endpoint {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-right: 10px;
+        }
+
+        .method.get { background: #27ae60; color: white; }
+        .method.post { background: #3498db; color: white; }
+        .method.put { background: #f39c12; color: white; }
+        .method.delete { background: #e74c3c; color: white; }
+
+        .status-code {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            margin: 2px;
+        }
+
+        .status-200 { background: #27ae60; color: white; }
+        .status-201 { background: #27ae60; color: white; }
+        .status-204 { background: #27ae60; color: white; }
+        .status-400 { background: #e74c3c; color: white; }
+        .status-401 { background: #e74c3c; color: white; }
+        .status-404 { background: #e74c3c; color: white; }
+        .status-500 { background: #e74c3c; color: white; }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .badge.required { background: #e74c3c; color: white; }
+        .badge.optional { background: #95a5a6; color: white; }
+        .badge.planned { background: #f39c12; color: white; }
+
+        .example {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .example h4 {
+            color: #3498db;
+            margin-bottom: 10px;
+        }
+
+        .collapsible {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapsible:hover {
+            background: #f8f9fa;
+        }
+
+        .collapsible-content {
+            display: none;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .collapsible.active + .collapsible-content {
+            display: block;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #3498db;
+            border-radius: 5px;
+            font-size: 1em;
+            margin-bottom: 20px;
+        }
+
+        .highlight {
+            background: yellow;
+            padding: 2px 4px;
+        }
+
+        .error-box {
+            background: #fee;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .success-box {
+            background: #efe;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .info-box {
+            background: #e8f4f8;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 3px;
+        }
+
+        .enum-list {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .enum-list code {
+            display: block;
+            margin: 5px 0;
+            padding: 5px;
+            background: white;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+
+            table {
+                font-size: 0.9em;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Merchandising Rules API - Complete Reference</h1>
+
+        <input type="text" class="search-box" id="searchBox" placeholder="Search documentation...">
+
+        <div class="toc">
+            <h3>Table of Contents</h3>
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#base-url">Base URL & Authentication</a></li>
+                <li><a href="#endpoints">API Endpoints</a></li>
+                <li><a href="#schemas">Request/Response Schemas</a></li>
+                <li><a href="#field-reference">Field Reference</a></li>
+                <li><a href="#validation">Validation Rules</a></li>
+                <li><a href="#errors">Error Codes & Messages</a></li>
+                <li><a href="#examples">Examples</a></li>
+                <li><a href="#magento">Magento Integration</a></li>
+                <li><a href="#phase2">Phase 2 Features (Planned)</a></li>
+            </ul>
+        </div>
+
+        <section id="overview">
+            <h2>Overview</h2>
+            <p>The Merchandising Rules API allows merchants to control search results through three types of rules:</p>
+            <ul>
+                <li><strong>Boost</strong>: Increase/decrease product visibility scores</li>
+                <li><strong>Pin</strong>: Place specific products at fixed positions</li>
+                <li><strong>Hide</strong>: Completely exclude products from results</li>
+            </ul>
+            <p>Rules are evaluated on every search request and applied before personalization.</p>
+        </section>
+
+        <section id="base-url">
+            <h2>Base URL & Authentication</h2>
+            <div class="info-box">
+                <strong>Base URL:</strong> <code>http://localhost:7001/api/v1/merchandising/rules</code><br>
+                <strong>Authentication:</strong> API Key via <code>Authorization</code> header<br>
+                <strong>Content-Type:</strong> <code>application/json</code>
+            </div>
+            <pre><code>Authorization: Bearer ak_live_7hr8f6rhtk64jimhlzgtdez7d7gvh5b3</code><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></pre>
+        </section>
+
+        <section id="endpoints">
+            <h2>API Endpoints</h2>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> Create Rule</h3>
+                <p><code>/api/v1/merchandising/rules</code></p>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-201">201 Created</span>
+                    <span class="status-code status-400">400 Bad Request</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> List Rules</h3>
+                <p><code>/api/v1/merchandising/rules</code></p>
+                <p><strong>Query Parameters:</strong></p>
+                <table>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Default</th>
+                        <th>Constraints</th>
+                    </tr>
+                    <tr>
+                        <td><code>skip</code></td>
+                        <td>integer</td>
+                        <td>No</td>
+                        <td>0</td>
+                        <td>≥ 0</td>
+                    </tr>
+                    <tr>
+                        <td><code>limit</code></td>
+                        <td>integer</td>
+                        <td>No</td>
+                        <td>100</td>
+                        <td>1 ≤ limit ≤ 1000</td>
+                    </tr>
+                    <tr>
+                        <td><code>is_active</code></td>
+                        <td>boolean</td>
+                        <td>No</td>
+                        <td>null</td>
+                        <td>true, false</td>
+                    </tr>
+                    <tr>
+                        <td><code>rule_type</code></td>
+                        <td>string</td>
+                        <td>No</td>
+                        <td>null</td>
+                        <td>"boost", "pin", "hide"</td>
+                    </tr>
+                </table>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-200">200 OK</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method get">GET</span> Get Rule</h3>
+                <p><code>/api/v1/merchandising/rules/{rule_id}</code></p>
+                <p><strong>Path Parameters:</strong></p>
+                <table>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Type</th>
+                        <th>Required</th>
+                        <th>Constraints</th>
+                    </tr>
+                    <tr>
+                        <td><code>rule_id</code></td>
+                        <td>integer</td>
+                        <td>Yes</td>
+                        <td>> 0</td>
+                    </tr>
+                </table>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-200">200 OK</span>
+                    <span class="status-code status-404">404 Not Found</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method put">PUT</span> Update Rule</h3>
+                <p><code>/api/v1/merchandising/rules/{rule_id}</code></p>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-200">200 OK</span>
+                    <span class="status-code status-400">400 Bad Request</span>
+                    <span class="status-code status-404">404 Not Found</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method delete">DELETE</span> Delete Rule</h3>
+                <p><code>/api/v1/merchandising/rules/{rule_id}</code></p>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-204">204 No Content</span>
+                    <span class="status-code status-404">404 Not Found</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+
+            <div class="endpoint">
+                <h3><span class="method post">POST</span> Preview Rule</h3>
+                <p><code>/api/v1/merchandising/rules/{rule_id}/preview</code></p>
+                <p><strong>Status Codes:</strong>
+                    <span class="status-code status-200">200 OK</span>
+                    <span class="status-code status-404">404 Not Found</span>
+                    <span class="status-code status-400">400 Bad Request</span>
+                    <span class="status-code status-401">401 Unauthorized</span>
+                    <span class="status-code status-500">500 Internal Server Error</span>
+                </p>
+            </div>
+        </section>
+
+        <section id="schemas">
+            <h2>Request/Response Schemas</h2>
+
+            <h3>MerchandisingRuleCreate</h3>
+            <table>
+                <tr>
+                    <th>Field</th>
+                    <th>Type</th>
+                    <th>Required</th>
+                    <th>Default</th>
+                    <th>Constraints</th>
+                </tr>
+                <tr>
+                    <td><code>name</code></td>
+                    <td>string</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>-</td>
+                    <td>1 ≤ length ≤ 255</td>
+                </tr>
+                <tr>
+                    <td><code>description</code></td>
+                    <td>string</td>
+                    <td><span class="badge optional">Optional</span></td>
+                    <td>null</td>
+                    <td>length ≤ 1000</td>
+                </tr>
+                <tr>
+                    <td><code>rule_type</code></td>
+                    <td>string</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>-</td>
+                    <td>"boost", "pin", "hide"</td>
+                </tr>
+                <tr>
+                    <td><code>priority</code></td>
+                    <td>integer</td>
+                    <td><span class="badge optional">Optional</span></td>
+                    <td>500</td>
+                    <td>1 ≤ priority ≤ 1000</td>
+                </tr>
+                <tr>
+                    <td><code>is_active</code></td>
+                    <td>boolean</td>
+                    <td><span class="badge optional">Optional</span></td>
+                    <td>true</td>
+                    <td>true, false</td>
+                </tr>
+                <tr>
+                    <td><code>conditions</code></td>
+                    <td>object</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>-</td>
+                    <td>See Conditions section</td>
+                </tr>
+                <tr>
+                    <td><code>action_config</code></td>
+                    <td>object</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>-</td>
+                    <td>See Action Config section</td>
+                </tr>
+            </table>
+
+            <h3>Rule Type Enum Values</h3>
+            <div class="enum-list">
+                <code>"boost"</code> - Increase/decrease product visibility scores
+                <code>"pin"</code> - Place specific products at fixed positions
+                <code>"hide"</code> - Completely exclude products from results
+            </div>
+
+            <h3>Priority Range</h3>
+            <div class="info-box">
+                <strong>Valid Range:</strong> 1 to 1000 (integer)<br>
+                <strong>Default:</strong> 500<br>
+                <strong>Higher = More Important:</strong> Rules with higher priority take precedence in conflicts
+            </div>
+
+            <h3>Boolean Values</h3>
+            <div class="enum-list">
+                <code>true</code> - Rule is active / field is enabled
+                <code>false</code> - Rule is inactive / field is disabled
+            </div>
+        </section>
+
+        <section id="field-reference">
+            <h2>Field Reference</h2>
+
+            <h3>Conditions</h3>
+            <p><strong>Structure:</strong></p>
+            <pre><code>{
+  "type": "&lt;condition_type&gt;",
+  "operator": "&lt;operator&gt;",
+  "value": "&lt;value&gt;"
+}</code><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></pre>
+
+            <table>
+                <tr>
+                    <th>Condition Type</th>
+                    <th>Valid Operators</th>
+                    <th>Value Type</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>query_match</code></td>
+                    <td>"exact", "contains"</td>
+                    <td>string</td>
+                    <td>Match against search query</td>
+                </tr>
+                <tr>
+                    <td><code>category</code></td>
+                    <td>"equals", "in"</td>
+                    <td>string (equals) or array (in)</td>
+                    <td>Match against product categories</td>
+                </tr>
+                <tr>
+                    <td><code>product_id</code></td>
+                    <td>"equals", "in"</td>
+                    <td>string/int (equals) or array (in)</td>
+                    <td>Match against product IDs</td>
+                </tr>
+            </table>
+
+            <h3>Query Match Operators</h3>
+            <div class="enum-list">
+                <code>"exact"</code> - Query must exactly match the value (case-insensitive)
+                <code>"contains"</code> - Query must contain the value as a substring (case-insensitive)
+            </div>
+
+            <h3>Category/Product ID Operators</h3>
+            <div class="enum-list">
+                <code>"equals"</code> - Must match exactly (single value)
+                <code>"in"</code> - Must match any value in the list (array)
+            </div>
+
+            <h3>Action Config - Boost</h3>
+            <table>
+                <tr>
+                    <th>Field</th>
+                    <th>Type</th>
+                    <th>Required</th>
+                    <th>Constraints</th>
+                </tr>
+                <tr>
+                    <td><code>boost_factor</code></td>
+                    <td>float</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>0.1 ≤ boost_factor ≤ 10.0</td>
+                </tr>
+            </table>
+
+            <div class="info-box">
+                <strong>Boost Factor Ranges:</strong><br>
+                • <code>0.1 - 0.9</code>: Demote (reduce visibility)<br>
+                • <code>1.0</code>: Neutral (no change)<br>
+                • <code>1.1 - 10.0</code>: Boost (increase visibility)
+            </div>
+
+            <h3>Action Config - Pin</h3>
+            <table>
+                <tr>
+                    <th>Field</th>
+                    <th>Type</th>
+                    <th>Required</th>
+                    <th>Constraints</th>
+                </tr>
+                <tr>
+                    <td><code>position</code></td>
+                    <td>integer</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>1 ≤ position ≤ 1000</td>
+                </tr>
+                <tr>
+                    <td><code>product_id</code></td>
+                    <td>string</td>
+                    <td><span class="badge required">Required</span></td>
+                    <td>Non-empty</td>
+                </tr>
+            </table>
+
+            <h3>Action Config - Hide</h3>
+            <div class="info-box">
+                <strong>Empty Object:</strong> Hide rules require no fields in action_config. Use <code>{}</code>
+            </div>
+        </section>
+
+        <section id="validation">
+            <h2>Validation Rules</h2>
+
+            <h3>Field Validation</h3>
+            <div class="collapsible" onclick="toggleCollapse(this)">
+                <strong>name</strong> - Click to expand validation rules
+            </div>
+            <div class="collapsible-content">
+                <ul>
+                    <li><strong>Type:</strong> String</li>
+                    <li><strong>Required:</strong> Yes</li>
+                    <li><strong>Min Length:</strong> 1 character</li>
+                    <li><strong>Max Length:</strong> 255 characters</li>
+                    <li><strong>Pattern:</strong> Any UTF-8 string (no regex restriction)</li>
+                    <li><strong>Error Messages:</strong>
+                        <ul>
+                            <li>"name is required" (if missing)</li>
+                            <li>"name must be at least 1 character" (if empty)</li>
+                            <li>"name must be at most 255 characters" (if too long)</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="collapsible" onclick="toggleCollapse(this)">
+                <strong>rule_type</strong> - Click to expand validation rules
+            </div>
+            <div class="collapsible-content">
+                <ul>
+                    <li><strong>Type:</strong> String (enum)</li>
+                    <li><strong>Required:</strong> Yes</li>
+                    <li><strong>Valid Values:</strong> "boost", "pin", "hide" (case-sensitive)</li>
+                    <li><strong>Error Messages:</strong>
+                        <ul>
+                            <li>"rule_type is required" (if missing)</li>
+                            <li>"rule_type must be one of: boost, pin, hide" (if invalid)</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="collapsible" onclick="toggleCollapse(this)">
+                <strong>boost_factor</strong> - Click to expand validation rules
+            </div>
+            <div class="collapsible-content">
+                <ul>
+                    <li><strong>Type:</strong> Float</li>
+                    <li><strong>Required:</strong> Yes (for boost rules)</li>
+                    <li><strong>Min Value:</strong> 0.1</li>
+                    <li><strong>Max Value:</strong> 10.0</li>
+                    <li><strong>Error Messages:</strong>
+                        <ul>
+                            <li>"boost rule must have 'boost_factor' in action_config" (if missing)</li>
+                            <li>"boost_factor must be a number" (if wrong type)</li>
+                            <li>"boost_factor must be between 0.1 and 10.0" (if out of range)</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="errors">
+            <h2>Error Codes & Messages</h2>
+
+            <h3>HTTP Status Codes</h3>
+            <table>
+                <tr>
+                    <th>Code</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                    <th>When It Occurs</th>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-200">200</span></td>
+                    <td>OK</td>
+                    <td>Request successful</td>
+                    <td>GET/PUT requests succeed</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-201">201</span></td>
+                    <td>Created</td>
+                    <td>Resource created</td>
+                    <td>POST request creates rule</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-204">204</span></td>
+                    <td>No Content</td>
+                    <td>Resource deleted</td>
+                    <td>DELETE request succeeds</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-400">400</span></td>
+                    <td>Bad Request</td>
+                    <td>Validation error</td>
+                    <td>Invalid request body or parameters</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-401">401</span></td>
+                    <td>Unauthorized</td>
+                    <td>Authentication failed</td>
+                    <td>Missing/invalid API key</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-404">404</span></td>
+                    <td>Not Found</td>
+                    <td>Resource not found</td>
+                    <td>Rule doesn't exist or doesn't belong to merchant</td>
+                </tr>
+                <tr>
+                    <td><span class="status-code status-500">500</span></td>
+                    <td>Internal Server Error</td>
+                    <td>Server error</td>
+                    <td>Database/Redis/system error</td>
+                </tr>
+            </table>
+
+            <h3>Common Error Messages</h3>
+            <div class="error-box">
+                <strong>Validation Errors:</strong>
+                <ul>
+                    <li>"name is required"</li>
+                    <li>"name must be at least 1 character"</li>
+                    <li>"rule_type must be one of: boost, pin, hide"</li>
+                    <li>"priority must be between 1 and 1000"</li>
+                    <li>"boost_factor must be between 0.1 and 10.0"</li>
+                    <li>"pin rule must have 'product_id' in action_config"</li>
+                    <li>... and many more (see full list in Markdown version)</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="examples">
+            <h2>Examples</h2>
+
+            <div class="example">
+                <h4>Example 1: Boost Electronics for Laptop Queries</h4>
+                <pre><code>curl -X POST "http://localhost:7001/api/v1/merchandising/rules" \
+  -H "Authorization: Bearer ak_live_7hr8f6rhtk64jimhlzgtdez7d7gvh5b3" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Boost Electronics for Laptop Queries",
+    "description": "When users search for laptops, boost electronics products",
+    "rule_type": "boost",
+    "priority": 800,
+    "is_active": true,
+    "trigger_conditions": {
+      "type": "query_match",
+      "operator": "contains",
+      "value": "laptop"
+    },
+    "target_conditions": {
+      "type": "category",
+      "operator": "equals",
+      "value": "Electronics"
+    },
+    "action_config": {
+      "boost_factor": 2.5
+    }
+  }'</code><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></pre>
+            </div>
+
+            <div class="example">
+                <h4>Example 2: Pin Product for Brand Queries</h4>
+                <pre><code>curl -X POST "http://localhost:7001/api/v1/merchandising/rules" \
+  -H "Authorization: Bearer ak_live_7hr8f6rhtk64jimhlzgtdez7d7gvh5b3" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Pin Featured Product for Nike Queries",
+    "description": "Pin featured Nike product when users search for Nike",
+    "rule_type": "pin",
+    "priority": 900,
+    "is_active": true,
+    "trigger_conditions": {
+      "type": "query_match",
+      "operator": "contains",
+      "value": "nike"
+    },
+    "target_conditions": {
+      "type": "product_id",
+      "operator": "equals",
+      "value": "999"
+    },
+    "action_config": {
+      "position": 1,
+      "product_id": "999"
+    }
+  }'</code><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></pre>
+            </div>
+
+            <div class="example">
+                <h4>Example 3: Hide Out-of-Stock Products</h4>
+                <pre><code>curl -X POST "http://localhost:7001/api/v1/merchandising/rules" \
+  -H "Authorization: Bearer ak_live_7hr8f6rhtk64jimhlzgtdez7d7gvh5b3" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Hide Out of Stock Products",
+    "description": "Hide products that are currently out of stock",
+    "rule_type": "hide",
+    "priority": 1000,
+    "is_active": true,
+    "target_conditions": {
+      "type": "product_id",
+      "operator": "in",
+      "value": ["456", "789", "101", "202", "303"]
+    },
+    "action_config": {}
+  }'</code><button class="copy-btn" onclick="copyToClipboard(this)">Copy</button></pre>
+            </div>
+        </section>
+
+        <section id="magento">
+            <h2>Magento Integration</h2>
+            <div class="info-box">
+                <strong>PHP Client Example:</strong> See the Markdown version for complete PHP integration code including:
+                <ul>
+                    <li>MerchandisingRulesClient class</li>
+                    <li>Create boost/pin/hide rules</li>
+                    <li>List, update, delete rules</li>
+                    <li>Preview rules</li>
+                    <li>Observer example for auto-creating rules</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="phase2">
+            <h2>Phase 2 Features (Planned) <span class="badge planned">Planned</span></h2>
+            <div class="info-box">
+                <strong>Coming Soon:</strong>
+                <ul>
+                    <li><strong>Compound Conditions:</strong> AND/OR logic for multiple conditions</li>
+                    <li><strong>Scheduled Activation:</strong> Rules that activate on specific dates</li>
+                    <li><strong>Rule Templates:</strong> Reusable rule templates</li>
+                    <li><strong>User Segmentation:</strong> Rules for specific user segments</li>
+                    <li><strong>A/B Testing:</strong> Rule variants for testing</li>
+                    <li><strong>Date Range Conditions:</strong> Match based on product dates</li>
+                    <li><strong>Regex Query Matching:</strong> Support for regex patterns</li>
+                    <li><strong>Rule Grouping:</strong> Group related rules</li>
+                    <li><strong>Audit Log:</strong> Track all rule changes</li>
+                </ul>
+            </div>
+        </section>
+
+        <section>
+            <h2>Regex Patterns</h2>
+            <div class="info-box">
+                <strong>Current Status:</strong> No regex restrictions on string fields. All string fields accept any UTF-8 characters.<br><br>
+                <strong>Future (Phase 2):</strong> Regex support will be added for query_match conditions with "regex" operator.
+            </div>
+        </section>
+    </div>
+
+    <script>
+        function copyToClipboard(button) {
+            const code = button.previousElementSibling;
+            const text = code.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const original = button.textContent;
+                button.textContent = "Copied!";
+                setTimeout(() => {
+                    button.textContent = original;
+                }, 2000);
+            });
+        }
+
+        function toggleCollapse(element) {
+            element.classList.toggle('active');
+        }
+
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            const sections = document.querySelectorAll('section, .endpoint, .example');
+            
+            sections.forEach(section => {
+                const text = section.textContent.toLowerCase();
+                if (text.includes(searchTerm) || searchTerm === '') {
+                    section.style.display = '';
+                    // Highlight matching text
+                    if (searchTerm && searchTerm.length > 2) {
+                        highlightText(section, searchTerm);
+                    }
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        });
+
+        function highlightText(element, term) {
+            // Simple highlight implementation
+            // In production, use a proper highlighting library
+        }
+    </script>
+</body>
+</html>
+

@@ -46,36 +46,25 @@ def setup_paths():
     """Set up Python paths for both local dev and production Docker"""
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
+    backend_path = project_root / "backend"
 
-    # Check if we're in production Docker (shared modules directly available)
-    if (script_dir / "shared").exists():
-        # Local development - scripts/ directory has shared/
-        sys.path.insert(0, str(project_root))
-        print_info("Using local development environment")
+    # Always add backend path first (where shared modules are)
+    sys.path.insert(0, str(backend_path))
+    sys.path.insert(0, str(project_root))
+
+    # Verify we can find the shared modules
+    if (backend_path / "shared").exists():
+        print_info("Using local development environment (backend/shared found)")
     elif (Path("/app/shared")).exists():
         # Production Docker - modules are in /app
         sys.path.insert(0, "/app")
-        print_info("Using production Docker environment")
+        print_info("Using production Docker environment (/app/shared found)")
     else:
-        # Try to find shared modules in common locations
-        possible_paths = [project_root, Path("/app"), Path("/opt/app")]
-        for path in possible_paths:
-            if (path / "shared").exists():
-                sys.path.insert(0, str(path))
-                print_info(f"Found shared modules at: {path}")
-                break
-        else:
-            # Fallback search in current directory tree
-            current_dir = Path.cwd()
-            for parent in [current_dir] + list(current_dir.parents):
-                if (parent / "shared").exists():
-                    sys.path.insert(0, str(parent))
-                    print_info(f"Found shared modules via fallback search: {parent}")
-                    break
-            else:
-                print_error("Could not find shared modules in any expected location")
-                print_error("Searched in: local dev, /app, /opt/app, and current directory tree")
-                sys.exit(1)
+        print_error("Could not find shared modules")
+        print_error(f"Backend path: {backend_path}")
+        print_error(f"Backend/shared exists: {(backend_path / 'shared').exists()}")
+        print_error(f"Current working directory: {Path.cwd()}")
+        sys.exit(1)
 
 # Setup paths before other imports
 setup_paths()
@@ -92,6 +81,7 @@ except ImportError as e:
     print_error(f"Failed to import modules: {e}")
     print_error("This script requires access to the shared backend modules.")
     print_error("Make sure you're running from the project root with venv activated.")
+    print_error("Try installing dependencies: pip install -r backend/requirements.txt")
     sys.exit(1)
 
 settings = get_settings()
