@@ -9,6 +9,7 @@ AI Product Discovery Suite - Database Base Classes
 """
 
 import asyncio
+import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
@@ -16,8 +17,6 @@ from sqlalchemy import MetaData
 import structlog
 
 from shared.config.settings import get_settings
-
-settings = get_settings()
 
 # Create metadata with naming convention
 metadata = MetaData(
@@ -30,18 +29,40 @@ metadata = MetaData(
     }
 )
 
-# Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    echo=settings.DATABASE_ECHO,
-    future=True
-)
+# Create async engine with optimized connection pooling
+def _get_engine():
+    settings = get_settings()
+    return create_async_engine(
+        settings.DATABASE_URL,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        pool_recycle=getattr(settings, 'DATABASE_POOL_RECYCLE', 3600),  # 1 hour
+        pool_pre_ping=getattr(settings, 'DATABASE_POOL_PRE_PING', True),  # Connection health checks
+        echo=settings.DATABASE_ECHO,
+        future=True,
+        # Connection timeout
+        connect_args={
+            "server_settings": {
+                "application_name": "ai_discovery_analytics",
+                "tcp_keepalives_idle": "600",
+                "tcp_keepalives_interval": "30",
+                "tcp_keepalives_count": "3"
+            }
+        }
+    )
+
+# Global engine instance (lazy loaded)
+_engine = None
+
+def engine():
+    global _engine
+    if _engine is None:
+        _engine = _get_engine()
+    return _engine
 
 # Create async session maker
 AsyncSessionLocal = async_sessionmaker(
-    engine,
+    engine(),
     class_=AsyncSession,
     expire_on_commit=False
 )
@@ -52,6 +73,19 @@ Base = declarative_base(metadata=metadata)
 
 async def get_database_session() -> AsyncGenerator[AsyncSession, None]:
     """Get database session"""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+# Backwards-compatible alias for middleware expecting get_db
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Backwards-compatible alias - directly yields database session"""
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -77,32 +111,29 @@ async def init_database():
             
             if service_name in ['celery', 'analytics', 'recommendation']:
                 # Services that need full model access
+                # Import all models through shared.models.__init__ to register them with Base.metadata
                 try:
-                    from shared.models import product, user, search, recommendation, analytics
-                    logger.info("Successfully imported all models")
+                    from shared.models import (
+                        Merchant, APIKey, APIKeyUsage,
+                        AnalyticsEvent, ProductSimilarity,
+                        UserSearchHistory, UserProductViews, UserSearchClicks, PersonalizedSearchWeights
+                    )
+                    logger.info("Successfully imported models")
                     models_imported = True
-                except ImportError:
-                    # Try alternative import paths
-                    try:
-                        from shared.models.product import Product
-                        from shared.models.user import User
-                        from shared.models.search import SearchQuery
-                        from shared.models.recommendation import Recommendation
-                        from shared.models.analytics import AnalyticsEvent
-                        logger.info("Successfully imported individual models")
-                        models_imported = True
-                    except ImportError as ie:
-                        logger.warning("Could not import models", import_error=str(ie), service=service_name)
+                except ImportError as ie:
+                    logger.warning("Could not import models", import_error=str(ie), service=service_name)
             else:
                 # Services like search that don't need full models
                 logger.info("Skipping model imports for service", service=service_name)
             
-            # Create all tables (only if models are registered)
+            # NOTE: Base.metadata.create_all is typically NOT recommended when using Alembic
+            # as it bypasses the migration history. We keep it as a fallback but log a warning.
             if models_imported or Base.metadata.tables:
-                await conn.run_sync(Base.metadata.create_all)
-                logger.info("Database tables created")
+                # await conn.run_sync(Base.metadata.create_all)
+                # logger.info("Database tables created via create_all (NOTE: Use alembic instead)")
+                logger.info("Database models registered. Skipping create_all in favor of Alembic migrations.")
             else:
-                logger.info("No models to create tables for")
+                logger.info("No models to register")
             
         logger.info("Database initialized successfully")
         
@@ -128,8 +159,9 @@ class DatabaseManager:
     async def health_check(self) -> bool:
         """Check database health"""
         try:
+            from sqlalchemy import text
             async with self.session_maker() as session:
-                await session.execute("SELECT 1")
+                await session.execute(text("SELECT 1"))
                 return True
         except Exception:
             return False

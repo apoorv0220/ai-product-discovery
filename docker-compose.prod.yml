@@ -1,0 +1,228 @@
+services:
+  # Search Service
+  search-service:
+    build:
+      context: ./backend
+      dockerfile: search-service/Dockerfile
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_search
+    ports:
+      - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Recommendation Service
+  recommendation-service:
+    build:
+      context: ./backend
+      dockerfile: recommendation-service/Dockerfile
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_recommendation
+    ports:
+      - "${RECOMMENDATION_SERVICE_EXTERNAL_PORT:-7002}:${RECOMMENDATION_SERVICE_PORT:-7099}"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./backend
+      dockerfile: analytics-service/Dockerfile
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_analytics
+    ports:
+      - "${ANALYTICS_SERVICE_EXTERNAL_PORT:-7004}:${ANALYTICS_SERVICE_PORT:-7099}"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Shopping Assistant Service
+  shopping-assistant:
+    build:
+      context: ./backend
+      dockerfile: shopping-assistant/Dockerfile
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_assistant
+    ports:
+      - "${SHOPPING_ASSISTANT_EXTERNAL_PORT:-7005}:${SHOPPING_ASSISTANT_PORT:-7099}"
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_worker
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4} --queues=analytics,celery --max-tasks-per-child=1000
+    healthcheck:
+      test: ["CMD", "celery", "-A", "shared.celery.app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Beat (Periodic Task Scheduler)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_beat
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app beat --loglevel=info
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/celerybeat.pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Flower (Celery Monitoring Dashboard)
+  flower:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_flower
+    env_file:
+      - .env
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+    command: celery -A shared.celery.app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nginx Reverse Proxy (Production only)
+  nginx:
+    image: nginx:alpine
+    container_name: ai_discovery_nginx
+    ports:
+      - "${NGINX_EXTERNAL_PORT:-7008}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - search-service
+      - recommendation-service
+      - analytics-service
+      - shopping-assistant
+      - flower
+    networks:
+      - ai-discovery
+    restart: unless-stopped
+
+networks:
+  ai-discovery:
+    external: true
+    name: ai_discovery_network

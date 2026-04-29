@@ -22,14 +22,57 @@ import structlog
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Load environment variables from .env file (dual environment support) - MUST happen before imports
+try:
+    from dotenv import load_dotenv
+    import pathlib
+
+    # Detect if running in Docker container
+    in_docker = (
+        pathlib.Path('/.dockerenv').exists() or  # Docker container marker
+        os.getenv('HOSTNAME', '').startswith('ai_discovery_') or  # Container naming pattern
+        pathlib.Path('/app').exists()  # Docker working directory
+    )
+
+    if in_docker:
+        print("[INFO] Running in Docker container - using Docker-provided environment variables")
+    else:
+        # Local development: load from .env files
+        env_paths = [
+            pathlib.Path(__file__).parent.parent.parent / '.env.local',  # Local overrides
+            pathlib.Path(__file__).parent.parent.parent / '.env',  # Project root
+            pathlib.Path(__file__).parent.parent.parent / '.env.dev',  # Development
+            pathlib.Path(__file__).parent.parent.parent / '.env.production',  # Production
+        ]
+
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(env_path)
+                print(f"[SUCCESS] Loaded environment variables from {env_path}")
+                env_loaded = True
+                break
+
+        if not env_loaded:
+            print("[INFO] No .env file found - using system environment variables or defaults")
+
+except ImportError:
+    print("[WARNING] python-dotenv not available, skipping .env loading")
 
 from shared.config.settings import AnalyticsServiceSettings
 from shared.database.base import init_database, close_database
+from shared.middleware.correlation_id import CorrelationIDMiddleware
+from shared.middleware.auth import APIKeyAuthMiddleware
+from shared.middleware.rate_limiter import RateLimitMiddleware
+from shared.monitoring.metrics import PrometheusMetricsMiddleware, metrics_endpoint
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from api import events, dashboard, reports, health
+from api import dashboard, reports, health, tracking, metrics, events, experiments, funnels
 from core.processor import EventProcessor
 from core.aggregator import DataAggregator
+from core.event_subscriber import EventSubscriber
 
 
 # Configure structured logging
@@ -75,6 +118,12 @@ async def lifespan(app: FastAPI):
         await app.state.data_aggregator.initialize()
         logger.info("Data aggregator initialized")
         
+        # Initialize event subscriber for Redis pub/sub
+        app.state.event_subscriber = EventSubscriber(app.state.event_processor)
+        await app.state.event_subscriber.start()
+        logger.info("Event subscriber initialized")
+        
+        
         logger.info("Analytics Service startup complete")
         yield
         
@@ -100,6 +149,11 @@ async def lifespan(app: FastAPI):
             await app.state.data_aggregator.cleanup()
             logger.info("Data aggregator cleaned up")
         
+        # Clean up event subscriber
+        if hasattr(app.state, 'event_subscriber'):
+            await app.state.event_subscriber.stop()
+            logger.info("Event subscriber cleaned up")
+        
         logger.info("Analytics Service shutdown complete")
         
     except Exception as e:
@@ -109,17 +163,78 @@ async def lifespan(app: FastAPI):
 # Initialize settings
 settings = AnalyticsServiceSettings()
 
+from fastapi.openapi.utils import get_openapi
+
 # Create FastAPI application
 app = FastAPI(
     title="AI Product Discovery - Analytics Service",
-    description="Analytics and tracking service for e-commerce insights",
+    description="""
+    **AI Product Discovery Suite - Analytics Service**
+
+    ## 🚀 Analytics & Business Intelligence
+
+    ### Key Features
+    - **Real-time Event Processing**: High-throughput analytics event ingestion
+    - **Behavioral Analytics**: User segmentation and behavior analysis
+    - **Business Intelligence**: Dashboards, reports, and time-series metrics
+    - **A/B Testing Framework**: Statistical analysis and automated optimization
+    - **Conversion Optimization**: Revenue attribution and funnel analysis
+
+    ### Main Endpoints
+    - **POST** `/api/v1/events/track` - Track analytics events
+    - **GET** `/api/v1/dashboard/overview` - Dashboard overview metrics
+    - **GET** `/api/v1/dashboard/metrics` - Time-series metrics
+    - **GET** `/api/v1/reports/performance` - Performance reports
+
+    ### Authentication
+    All endpoints require Bearer token authentication. Use your API key (ak_...) in the Authorization header.
+
+    ### Event Types Supported
+    - `page_view` - Page views and navigation
+    - `product_view` - Product detail page views
+    - `search` - Search queries performed
+    - `add_to_cart` - Items added to cart
+    - `remove_from_cart` - Items removed from cart
+    - `purchase` - Purchase completions
+    - `wishlist_add` - Items added to wishlist
+    - `recommendation_click` - Recommendation clicks
+    - `filter_apply` - Filter applications
+    - `session_start` - Session beginnings
+    - `session_end` - Session endings
+    """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
 )
 
-# Add middleware
+# Add global Bearer auth (Authorize button in Swagger) applied to all endpoints
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    components = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    components["APIKeyAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "APIKey",
+        "description": "Paste your API key (ak_...)"
+    }
+    openapi_schema["security"] = [{"APIKeyAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
+# Add middleware in execution order (FastAPI executes in reverse order of addition)
+# Execution order: CorrelationID -> Auth -> RateLimit -> Metrics -> GZip -> CORS
+
+# 1. CORS (executes last in response, first in response routing)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -128,32 +243,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 2. GZip compression
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# Request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all requests"""
-    start_time = time.time()
-    
-    # Log request
-    logger.info("Request started", 
-                method=request.method, 
-                url=str(request.url),
-                user_agent=request.headers.get("user-agent", ""))
-    
-    response = await call_next(request)
-    
-    # Log response
-    process_time = time.time() - start_time
-    logger.info("Request completed",
-                method=request.method,
-                url=str(request.url),
-                status_code=response.status_code,
-                process_time=process_time)
-    
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+# 3. Metrics (needs to measure everything, executes after other middleware)
+app.add_middleware(PrometheusMetricsMiddleware, service_name="analytics-service")
+
+# 4. Rate Limiting (needs merchant context from auth)
+app.add_middleware(
+    RateLimitMiddleware,
+    redis_url=settings.REDIS_URL,
+    burst_allowance=20,
+    exempt_paths={"/health", "/health/", "/metrics", "/metrics/", "/docs", "/redoc", "/openapi.json"}
+)
+
+# 5. Authentication (validates API key, sets merchant context)
+app.add_middleware(
+    APIKeyAuthMiddleware,
+    exempt_paths={
+        "/", "/health", "/health/", "/metrics", "/metrics/",
+        "/docs", "/docs/", "/redoc", "/redoc/", "/openapi.json", "/favicon.ico"
+    }
+)
+
+# 6. Correlation ID (executes first to set correlation ID for all downstream)
+app.add_middleware(CorrelationIDMiddleware)
 
 
 # Exception handler
@@ -171,11 +285,21 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Add metrics endpoint (must be exempt from auth)
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus metrics endpoint"""
+    return metrics_endpoint()
+
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(events.router, prefix="/api/v1/events", tags=["events"])
+app.include_router(experiments.router, prefix="/api/v1/experiments", tags=["experiments"])
+app.include_router(funnels.router, prefix="/api/v1/funnels", tags=["funnels"])
+app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])  
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["metrics"])
 
 
 @app.get("/")

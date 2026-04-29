@@ -24,6 +24,7 @@ use Magento\Store\Model\StoreManagerInterface;
 use Magento\Catalog\Helper\Image;
 use Magento\Framework\Pricing\Helper\Data as PriceHelper;
 use Magento\CatalogInventory\Api\StockRegistryInterface;
+use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Vendor\DiscoverySuite\Helper\Data;
 use Vendor\DiscoverySuite\Model\Api\HttpClient;
 
@@ -73,6 +74,11 @@ class SyncCatalog extends Command
     private $stockRegistry;
 
     /**
+     * @var CategoryRepositoryInterface
+     */
+    private $categoryRepository;
+
+    /**
      * Constructor
      *
      * @param State $appState
@@ -83,6 +89,7 @@ class SyncCatalog extends Command
      * @param Image $imageHelper
      * @param PriceHelper $priceHelper
      * @param StockRegistryInterface $stockRegistry
+     * @param CategoryRepositoryInterface $categoryRepository
      * @param string|null $name
      */
     public function __construct(
@@ -94,6 +101,7 @@ class SyncCatalog extends Command
         Image $imageHelper,
         PriceHelper $priceHelper,
         StockRegistryInterface $stockRegistry,
+        CategoryRepositoryInterface $categoryRepository,
         string $name = null
     ) {
         $this->appState = $appState;
@@ -104,6 +112,7 @@ class SyncCatalog extends Command
         $this->imageHelper = $imageHelper;
         $this->priceHelper = $priceHelper;
         $this->stockRegistry = $stockRegistry;
+        $this->categoryRepository = $categoryRepository;
         parent::__construct($name);
     }
 
@@ -186,7 +195,7 @@ class SyncCatalog extends Command
     private function testApiConnection(OutputInterface $output): bool
     {
         try {
-            $searchEndpoint = $this->helper->getApiBaseUrl() . ':' . $this->helper->getSearchServicePort() . '/health/';
+            $searchEndpoint = $this->helper->getServiceUrl('search', '/health/');
             $response = $this->httpClient->get($searchEndpoint);
             
             if (!empty($response['status']) && $response['status'] === 'healthy') {
@@ -275,6 +284,295 @@ class SyncCatalog extends Command
     }
 
     /**
+     * Extract a select attribute value, trying multiple codes if needed
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param string $attributeCode
+     * @param array $alternativeCodes
+     * @return mixed|null
+     */
+    private function extractSelectAttribute($product, $attributeCode, array $alternativeCodes = []): ?string
+    {
+        // Try primary attribute code first, then alternatives
+        $codesToTry = array_merge([$attributeCode], $alternativeCodes);
+        
+        foreach ($codesToTry as $code) {
+            try {
+                // Check if attribute exists before calling getAttributeText()
+                $attribute = $product->getResource()->getAttribute($code);
+                if (!$attribute || !$attribute->getId()) {
+                    // Attribute doesn't exist, try next code
+                    continue;
+                }
+                
+                // Try getAttributeText() which returns the label
+                $value = $product->getAttributeText($code);
+                
+                if ($value !== false && $value !== null && $value !== '') {
+                    return (string)$value;
+                }
+                
+                // If getAttributeText() returns false, try getData() to get raw value
+                $rawValue = $product->getData($code);
+                
+                if ($rawValue && $rawValue !== '' && $rawValue !== '0' && $rawValue !== false) {
+                    // If raw value is numeric (option ID), the attribute exists but might need reload
+                    if (is_numeric($rawValue)) {
+                        // Attribute exists but getAttributeText failed - try again
+                        $value = $product->getAttributeText($code);
+                        if ($value !== false && $value !== null && $value !== '') {
+                            return (string)$value;
+                        }
+                        // If still false, attribute exists but is empty - continue to next code
+                        continue;
+                    }
+                    // If raw value is a string, use it directly
+                    return (string)$rawValue;
+                }
+            } catch (\Exception $e) {
+                // Attribute doesn't exist or error accessing it, try next code
+                continue;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get variant attributes from configurable product children
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store|null $store
+     * @return array Array with 'color' and 'size' keys containing unique values from variants
+     */
+    private function getVariantAttributes($product, $store = null): array
+    {
+        $variantAttrs = [
+            'color' => [],
+            'size' => []
+        ];
+        
+        try {
+            // Check if product is configurable
+            if ($product->getTypeId() !== 'configurable') {
+                return $variantAttrs;
+            }
+            
+            // Get child products (variants)
+            $typeInstance = $product->getTypeInstance();
+            if (!$typeInstance || !method_exists($typeInstance, 'getUsedProducts')) {
+                return $variantAttrs;
+            }
+            
+            // Get used products (variants) - getUsedProducts($product, $requiredAttributeIds = null)
+            // Pass null for attributes to get all variants
+            // Store context is already set via setCurrentStore() in syncProducts()
+            $childProducts = $typeInstance->getUsedProducts($product, null);
+            
+            if (empty($childProducts)) {
+                return $variantAttrs;
+            }
+            
+            // Collect color and size from all variants
+            $colors = [];
+            $sizes = [];
+            
+            foreach ($childProducts as $child) {
+                // Extract color from variant
+                $color = $this->extractSelectAttribute($child, 'color', ['colour', 'Color', 'Colour']);
+                if ($color && !in_array($color, $colors)) {
+                    $colors[] = $color;
+                }
+                
+                // Extract size from variant
+                $size = $this->extractSelectAttribute($child, 'size', ['Size']);
+                if ($size && !in_array($size, $sizes)) {
+                    $sizes[] = $size;
+                }
+            }
+            
+            $variantAttrs['color'] = $colors;
+            $variantAttrs['size'] = $sizes;
+            
+        } catch (\Exception $e) {
+            // Silently fail - variant attributes are optional
+        }
+        
+        return $variantAttrs;
+    }
+
+    /**
+     * Extract product attributes with proper handling for different attribute types
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store|null $store
+     * @return array
+     */
+    private function extractProductAttributes($product, $store = null): array
+    {
+        $attributes = [
+            'type' => $product->getTypeId(),
+            'weight' => $product->getWeight(),
+        ];
+        
+        // For configurable products, get color/size from variants
+        $variantAttrs = $this->getVariantAttributes($product, $store);
+        
+        // Merge variant attributes into main attributes if they exist
+        if (!empty($variantAttrs['color'])) {
+            $attributes['color'] = $variantAttrs['color'];
+        }
+        if (!empty($variantAttrs['size'])) {
+            $attributes['size'] = $variantAttrs['size'];
+        }
+
+        // List of attributes to extract with their expected types
+        $attributeConfig = [
+            'manufacturer' => 'select',  // Brand dropdown
+            'color' => 'select',         // Color dropdown (typically select in Magento)
+            'size' => 'select',          // Size dropdown (typically select in Magento)
+            'material' => 'multiselect', // Multiselect attribute
+            'pattern' => 'select',       // Pattern dropdown
+            'climate' => 'multiselect',  // Climate multiselect
+        ];
+        
+        // Alternative attribute codes to try (for color/size that might have different names)
+        $alternativeCodes = [
+            'color' => ['colour', 'Color', 'Colour'],
+            'size' => ['Size']
+        ];
+
+        foreach ($attributeConfig as $attributeCode => $attributeType) {
+            try {
+                // Skip color/size if we already have variant attributes (for configurable products)
+                // This prevents overwriting variant arrays with parent values
+                if (in_array($attributeCode, ['color', 'size']) && isset($attributes[$attributeCode])) {
+                    continue;
+                }
+                
+                $value = null;
+
+                switch ($attributeType) {
+                    case 'select':
+                        // For dropdown/select attributes, try multiple methods and codes
+                        $value = $this->extractSelectAttribute($product, $attributeCode, $alternativeCodes[$attributeCode] ?? []);
+                        break;
+
+                    case 'multiselect':
+                        // For multiselect, getAttributeText() returns array of option texts
+                        // Check if attribute exists first to avoid errors
+                        $attribute = $product->getResource()->getAttribute($attributeCode);
+                        if ($attribute && $attribute->getId()) {
+                            try {
+                                $value = $product->getAttributeText($attributeCode);
+                                // getAttributeText() can return false for empty multiselect
+                                if ($value === false) {
+                                    $value = null;
+                                } elseif ($value && !is_array($value)) {
+                                    // Ensure it's an array or convert to array
+                                    $value = [$value];
+                                } elseif (is_array($value)) {
+                                    // Filter out empty/false values from array
+                                    $value = array_filter($value, function($v) {
+                                        return $v !== null && $v !== '' && $v !== false;
+                                    });
+                                    if (empty($value)) {
+                                        $value = null;
+                                    } else {
+                                        $value = array_values($value); // Re-index array
+                                    }
+                                }
+                            } catch (\Exception $e) {
+                                // Attribute access failed, set to null
+                                $value = null;
+                            }
+                        } else {
+                            $value = null;
+                        }
+                        break;
+
+                    case 'text':
+                    default:
+                        // For text inputs, use getData() instead of getAttributeText()
+                        $rawValue = $product->getData($attributeCode);
+                        if ($rawValue && $rawValue !== '' && $rawValue !== false) {
+                            $value = $rawValue;
+                        }
+                        // Fallback to getAttributeText() for select attributes that might be configured as text
+                        // Check if attribute exists first to avoid errors
+                        if (!$value || $value === false) {
+                            $attribute = $product->getResource()->getAttribute($attributeCode);
+                            if ($attribute && $attribute->getId()) {
+                                try {
+                                    $value = $product->getAttributeText($attributeCode);
+                                    // If getAttributeText returns false for empty, convert to null
+                                    if ($value === false) {
+                                        $value = null;
+                                    }
+                                } catch (\Exception $e) {
+                                    // Attribute access failed, keep existing value or null
+                                    $value = null;
+                                }
+                            }
+                        }
+                        break;
+                }
+
+                // Only include non-empty values
+                // Filter out: null, empty strings, false, empty arrays, and arrays with only empty/false values
+                $shouldInclude = false;
+                if ($value !== null && $value !== '' && $value !== false) {
+                    if (is_array($value)) {
+                        // For arrays, check if any element is non-empty
+                        $filtered = array_filter($value, function($v) {
+                            return $v !== null && $v !== '' && $v !== false;
+                        });
+                        $shouldInclude = !empty($filtered);
+                        if ($shouldInclude) {
+                            $value = array_values($filtered); // Re-index array
+                        }
+                    } else {
+                        $shouldInclude = true;
+                    }
+                }
+                
+                if ($shouldInclude) {
+                    $attributes[$attributeCode] = $value;
+                }
+
+            } catch (\Exception $e) {
+                // Skip problematic attributes but continue with others
+                continue;
+            }
+        }
+        
+        // For configurable products, add aggregated color/size from variants if not already set
+        if ($product->getTypeId() === 'configurable') {
+            // Add color from variants if not already extracted from parent
+            if (empty($attributes['color']) && !empty($variantAttrs['color'])) {
+                // If multiple colors, store as array; if single, store as string
+                if (count($variantAttrs['color']) === 1) {
+                    $attributes['color'] = $variantAttrs['color'][0];
+                } elseif (count($variantAttrs['color']) > 1) {
+                    $attributes['color'] = $variantAttrs['color'];
+                }
+            }
+            
+            // Add size from variants if not already extracted from parent
+            if (empty($attributes['size']) && !empty($variantAttrs['size'])) {
+                // If multiple sizes, store as array; if single, store as string
+                if (count($variantAttrs['size']) === 1) {
+                    $attributes['size'] = $variantAttrs['size'][0];
+                } elseif (count($variantAttrs['size']) > 1) {
+                    $attributes['size'] = $variantAttrs['size'];
+                }
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
      * Format product data for API
      *
      * @param \Magento\Catalog\Model\Product $product
@@ -293,23 +591,27 @@ class SyncCatalog extends Command
             // Get product image - try multiple sources
             $imageUrl = $this->getProductImageUrl($product);
             
-            // Get categories
+            // Get categories with names
             $categoryIds = $product->getCategoryIds();
             $categories = [];
             if (!empty($categoryIds)) {
                 foreach ($categoryIds as $categoryId) {
                     try {
-                        $category = $this->storeManager->getStore()->getGroupId();
-                        $categories[] = $categoryId;
+                        $category = $this->categoryRepository->get($categoryId, $store->getId());
+                        $categories[] = [
+                            'id' => (string)$categoryId,
+                            'name' => $category->getName()
+                        ];
                     } catch (\Exception $e) {
-                        // Skip invalid categories
+                        // Fallback to ID only if category not found
+                        $categories[] = (string)$categoryId;
                     }
                 }
             }
             
-            // Format product data according to AI service expectations
+                // Format product data according to AI service expectations
             $productData = [
-                'id' => $product->getId(),
+                'id' => (string)$product->getId(),
                 'sku' => $product->getSku(),
                 'name' => $product->getName(),
                 'description' => $product->getDescription() ?: $product->getShortDescription(),
@@ -321,13 +623,7 @@ class SyncCatalog extends Command
                 'url' => $productUrl,
                 'image_url' => $imageUrl,
                 'categories' => $categories,
-                'attributes' => [
-                    'type' => $product->getTypeId(),
-                    'weight' => $product->getWeight(),
-                    'manufacturer' => $product->getAttributeText('manufacturer'),
-                    'color' => $product->getAttributeText('color'),
-                    'size' => $product->getAttributeText('size'),
-                ],
+                'attributes' => $this->extractProductAttributes($product, $store),
                 'stock' => [
                     'qty' => $stockItem ? (float)$stockItem->getQty() : 0,
                     'is_in_stock' => $stockItem ? (bool)$stockItem->getIsInStock() : false,
@@ -337,8 +633,10 @@ class SyncCatalog extends Command
                 'visibility' => $product->getVisibility(),
                 'created_at' => $product->getCreatedAt(),
                 'updated_at' => $product->getUpdatedAt(),
-                'store_id' => $store->getId(),
-                'website_id' => $store->getWebsiteId()
+                'store_id' => (string)$store->getId(),
+                'website_id' => (string)$store->getWebsiteId(),
+                'avg_rating' => $this->getProductRating($product, $store),
+                'review_count' => $this->getProductReviewCount($product, $store)
             ];
             
             return $productData;
@@ -493,6 +791,73 @@ class SyncCatalog extends Command
         }
         
         return $imageUrl;
+    }
+
+    /**
+     * Get product average rating
+     * For configurable products, reviews are typically on the parent product
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store $store
+     * @return float|null
+     */
+    private function getProductRating($product, $store = null)
+    {
+        try {
+            // Try to get from product attributes directly (most common in Magento)
+            // Magento stores rating_summary as a product attribute
+            $ratingSummary = $product->getData('rating_summary');
+            if ($ratingSummary && $ratingSummary > 0) {
+                // Convert percentage to 5-star scale (Magento stores as percentage)
+                return round(($ratingSummary / 100) * 5, 2);
+            }
+            
+            // Fallback: Try getRatingSummary() method if available
+            if (method_exists($product, 'getRatingSummary')) {
+                $ratingSummary = $product->getRatingSummary();
+                if ($ratingSummary && $ratingSummary > 0) {
+                    return round(($ratingSummary / 100) * 5, 2);
+                }
+            }
+            
+            return null;
+        } catch (\Exception $e) {
+            // Silently fail - ratings are optional
+            return null;
+        }
+    }
+
+    /**
+     * Get product review count
+     * For configurable products, reviews are typically on the parent product
+     *
+     * @param \Magento\Catalog\Model\Product $product
+     * @param \Magento\Store\Model\Store $store
+     * @return int
+     */
+    private function getProductReviewCount($product, $store = null)
+    {
+        try {
+            // Try to get from product attributes directly (most common in Magento)
+            // Magento stores reviews_count as a product attribute
+            $reviewCountAttr = $product->getData('reviews_count');
+            if ($reviewCountAttr && $reviewCountAttr > 0) {
+                return (int)$reviewCountAttr;
+            }
+            
+            // Fallback: Try getReviewsCount() method if available
+            if (method_exists($product, 'getReviewsCount')) {
+                $reviewsCount = $product->getReviewsCount();
+                if ($reviewsCount && $reviewsCount > 0) {
+                    return (int)$reviewsCount;
+                }
+            }
+            
+            return 0;
+        } catch (\Exception $e) {
+            // Silently fail - review count is optional
+            return 0;
+        }
     }
 
 }

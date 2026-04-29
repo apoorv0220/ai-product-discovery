@@ -47,5 +47,18 @@
         <observer name="discovery_suite_search_query" 
                   instance="Vendor\DiscoverySuite\Observer\SearchQueryObserver"/>
     </event>
+
+     <!-- Search Query Events -->
+    <event name="controller_action_postdispatch_catalogsearch_result_index">
+        <observer name="discovery_suite_search_query" 
+                  instance="Vendor\DiscoverySuite\Observer\SearchQueriesObserver"/>
+    </event>
+    
+    <!-- Product View -->
+      <event name="catalog_controller_product_view">
+        <observer name="discovery_suite_product_view" 
+                  instance="Vendor\DiscoverySuite\Observer\ProductViewObserver"/>
+    </event>
+    
     
 </config>

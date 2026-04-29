@@ -4,7 +4,7 @@ Tracks user behavior to improve search ranking
 """
 
 from fastapi import APIRouter, HTTPException, Request, Body
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
@@ -13,134 +13,115 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.personalized_search import personalized_search_engine
+from shared.middleware.auth import get_merchant_id
+from schemas.tracking import (
+    ProductViewRequest,
+    SearchQueryRequest,
+    SearchClickRequest,
+    BulkTrackingRequest,
+    BulkTrackingResponse,
+    TrackingResponse,
+    UserHistoryResponse,
+    PersonalizationWeightsResponse
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-class ProductViewRequest(BaseModel):
-    """Request model for tracking product views"""
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    product_id: str = Field(..., description="Product ID")
-    product_name: Optional[str] = Field(None, description="Product name")
-    product_sku: Optional[str] = Field(None, description="Product SKU")
-    categories: Optional[List[str]] = Field(None, description="Product categories")
-    view_duration: Optional[int] = Field(0, description="Time spent viewing in seconds")
-    came_from_search: Optional[bool] = Field(False, description="Did user come from search?")
-    search_query: Optional[str] = Field(None, description="Search query if came from search")
+# Deprecation notice
+DEPRECATION_MESSAGE = {
+    "error": "Endpoint deprecated",
+    "message": "This endpoint has been moved to analytics-service",
+    "service": "analytics-service",
+    "deprecated_since": "2025-01-XX"
+}
 
-class SearchQueryRequest(BaseModel):
-    """Request model for tracking search queries"""
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    query: str = Field(..., description="Search query")
-    results: Optional[List[Dict[str, Any]]] = Field(None, description="Search results")
-
-class SearchClickRequest(BaseModel):
-    """Request model for tracking search result clicks"""
-    user_id: Optional[str] = Field(None, description="User ID (null for anonymous)")
-    session_id: str = Field(..., description="Session ID")
-    search_query: str = Field(..., description="Original search query")
-    clicked_product_id: str = Field(..., description="ID of clicked product")
-    clicked_product_name: Optional[str] = Field(None, description="Name of clicked product")
-    position_in_results: Optional[int] = Field(None, description="Position in search results")
-
-class TrackingResponse(BaseModel):
-    """Response model for tracking endpoints"""
-    success: bool
-    message: str
-    timestamp: str
-
-@router.post("/product-view", response_model=TrackingResponse)
+@router.post("/product-view", deprecated=True)
 async def track_product_view(
     request: ProductViewRequest = Body(...),
     http_request: Request = None
 ):
-    """Track a product page view for personalization"""
-    try:
-        success = await personalized_search_engine.track_product_view(
-            product_id=request.product_id,
-            user_id=request.user_id,
-            session_id=request.session_id,
-            product_name=request.product_name,
-            product_sku=request.product_sku,
-            categories=request.categories,
-            came_from_search=request.came_from_search,
-            search_query=request.search_query,
-            view_duration=request.view_duration
-        )
-        
-        if success:
-            logger.info(f"Tracked product view: {request.product_id} for user/session: {request.user_id or request.session_id}")
-            return TrackingResponse(
-                success=True,
-                message="Product view tracked successfully",
-                timestamp=datetime.utcnow().isoformat()
-            )
-        else:
-            raise HTTPException(status_code=500, detail="Failed to track product view")
-            
-    except Exception as e:
-        logger.error(f"Error tracking product view: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to track product view: {str(e)}")
+    """
+    DEPRECATED: This endpoint has been moved to analytics-service.
+    
+    Use: POST /api/v1/tracking/product-view (analytics-service)
+    """
+    logger.warning(
+        "Deprecated endpoint called",
+        endpoint="/product-view",
+        new_endpoint="/api/v1/tracking/product-view",
+        service="analytics-service"
+    )
+    
+    return JSONResponse(
+        status_code=410,
+        content={
+            **DEPRECATION_MESSAGE,
+            "new_endpoint": "/api/v1/tracking/product-view"
+        },
+        headers={
+            "Location": "http://analytics-service:7004/api/v1/tracking/product-view"
+        }
+    )
 
-@router.post("/search-query", response_model=TrackingResponse)
+@router.post("/search-query", deprecated=True)
 async def track_search_query(
     request: SearchQueryRequest = Body(...),
     http_request: Request = None
 ):
-    """Track a search query for personalization"""
-    try:
-        success = await personalized_search_engine.track_search_query(
-            query=request.query,
-            user_id=request.user_id,
-            session_id=request.session_id,
-            results=request.results or []
-        )
-        
-        if success:
-            logger.info(f"Tracked search query: '{request.query}' for user/session: {request.user_id or request.session_id}")
-            return TrackingResponse(
-                success=True,
-                message="Search query tracked successfully",
-                timestamp=datetime.utcnow().isoformat()
-            )
-        else:
-            raise HTTPException(status_code=500, detail="Failed to track search query")
-            
-    except Exception as e:
-        logger.error(f"Error tracking search query: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to track search query: {str(e)}")
+    """
+    DEPRECATED: This endpoint has been moved to analytics-service.
+    
+    Note: Search queries are now auto-tracked via Redis pub/sub when using the search endpoint.
+    Manual tracking: POST /api/v1/tracking/search-query (analytics-service)
+    """
+    logger.warning(
+        "Deprecated endpoint called",
+        endpoint="/search-query",
+        new_endpoint="/api/v1/tracking/search-query",
+        service="analytics-service",
+        note="Search queries are auto-tracked via Redis when using search endpoint"
+    )
+    
+    return JSONResponse(
+        status_code=410,
+        content={
+            **DEPRECATION_MESSAGE,
+            "new_endpoint": "/api/v1/tracking/search-query",
+            "note": "Search queries are automatically tracked via Redis pub/sub when using the search endpoint"
+        },
+        headers={
+            "Location": "http://analytics-service:7004/api/v1/tracking/search-query"
+        }
+    )
 
-@router.post("/search-click", response_model=TrackingResponse)
+@router.post("/search-click", deprecated=True)
 async def track_search_click(
     request: SearchClickRequest = Body(...),
     http_request: Request = None
 ):
-    """Track a click on search result for personalization"""
-    try:
-        success = await personalized_search_engine.track_search_click(
-            search_query=request.search_query,
-            clicked_product_id=request.clicked_product_id,
-            clicked_product_name=request.clicked_product_name,
-            position_in_results=request.position_in_results,
-            user_id=request.user_id,
-            session_id=request.session_id
-        )
-        
-        if success:
-            logger.info(f"Tracked search click: {request.clicked_product_id} for query: '{request.search_query}'")
-            return TrackingResponse(
-                success=True,
-                message="Search click tracked successfully",
-                timestamp=datetime.utcnow().isoformat()
-            )
-        else:
-            raise HTTPException(status_code=500, detail="Failed to track search click")
-            
-    except Exception as e:
-        logger.error(f"Error tracking search click: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to track search click: {str(e)}")
+    """
+    DEPRECATED: This endpoint has been moved to analytics-service.
+    
+    Use: POST /api/v1/tracking/search-click (analytics-service)
+    """
+    logger.warning(
+        "Deprecated endpoint called",
+        endpoint="/search-click",
+        new_endpoint="/api/v1/tracking/search-click",
+        service="analytics-service"
+    )
+    
+    return JSONResponse(
+        status_code=410,
+        content={
+            **DEPRECATION_MESSAGE,
+            "new_endpoint": "/api/v1/tracking/search-click"
+        },
+        headers={
+            "Location": "http://analytics-service:7004/api/v1/tracking/search-click"
+        }
+    )
 
 @router.get("/user-history/{user_id}")
 async def get_user_search_history(
@@ -274,6 +255,104 @@ async def get_personalization_weights(
     except Exception as e:
         logger.error(f"Error getting personalization weights: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get personalization weights: {str(e)}")
+
+@router.post("/bulk-ingest", response_model=BulkTrackingResponse)
+async def bulk_ingest_historical_data(
+    request: BulkTrackingRequest = Body(...),
+    http_request: Request = None
+):
+    # Extract merchant_id from authenticated request (API key)
+    merchant_id = get_merchant_id(http_request)
+    """Bulk ingest historical user interaction data for personalization"""
+    processed_counts = {
+        "product_views": 0,
+        "search_queries": 0,
+        "search_clicks": 0
+    }
+    errors = []
+
+    try:
+        # Process product views
+        for view_request in request.product_views or []:
+            try:
+                success = await personalized_search_engine.track_product_view(
+                    merchant_id=merchant_id,
+                    product_id=view_request.product_id,
+                    user_id=view_request.user_id,
+                    session_id=view_request.session_id,
+                    product_name=view_request.product_name,
+                    product_sku=view_request.product_sku,
+                    categories=view_request.categories,
+                    category_ids=view_request.category_ids,
+                    came_from_search=view_request.came_from_search,
+                    search_query=view_request.search_query,
+                    view_duration=view_request.view_duration,
+                    platform=view_request.platform,
+                    device_type=view_request.device_type,
+                    user_agent=view_request.user_agent,
+                    referrer=view_request.referrer
+                )
+                if success:
+                    processed_counts["product_views"] += 1
+                else:
+                    errors.append(f"Failed to process product view for {view_request.product_id}")
+            except Exception as e:
+                errors.append(f"Error processing product view: {str(e)}")
+
+        # Process search queries
+        for query_request in request.search_queries or []:
+            try:
+                success = await personalized_search_engine.track_search_query(
+                    merchant_id=merchant_id,
+                    query=query_request.query,
+                    user_id=query_request.user_id,
+                    session_id=query_request.session_id,
+                    results=query_request.results or []
+                )
+                if success:
+                    processed_counts["search_queries"] += 1
+                else:
+                    errors.append(f"Failed to process search query: {query_request.query}")
+            except Exception as e:
+                errors.append(f"Error processing search query: {str(e)}")
+
+        # Process search clicks
+        for click_request in request.search_clicks or []:
+            try:
+                success = await personalized_search_engine.track_search_click(
+                    merchant_id=merchant_id,
+                    search_query=click_request.search_query,
+                    clicked_product_id=click_request.clicked_product_id,
+                    clicked_product_name=click_request.clicked_product_name,
+                    position_in_results=click_request.position_in_results,
+                    user_id=click_request.user_id,
+                    session_id=click_request.session_id
+                )
+                if success:
+                    processed_counts["search_clicks"] += 1
+                else:
+                    errors.append(f"Failed to process search click for {click_request.clicked_product_id}")
+            except Exception as e:
+                errors.append(f"Error processing search click: {str(e)}")
+
+        total_processed = sum(processed_counts.values())
+        success_message = f"Successfully processed {total_processed} historical interactions"
+
+        logger.info(f"Bulk ingestion completed: {processed_counts}")
+        if errors:
+            logger.warning(f"Bulk ingestion errors: {len(errors)}")
+
+        return BulkTrackingResponse(
+            success=len(errors) == 0,  # Success if no errors
+            message=success_message,
+            processed_counts=processed_counts,
+            errors=errors[:10],  # Limit error messages
+            timestamp=datetime.utcnow().isoformat()
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk ingestion: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Bulk ingestion failed: {str(e)}")
 
 @router.get("/health")
 async def tracking_health():

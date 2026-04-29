@@ -13,8 +13,8 @@ from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
 from shared.database.base import get_database_session
-from shared.models.product import Product
-from shared.models.product_similarity import ProductSimilarity
+# from shared.models.product import Product # Removed
+from shared.models.recommendation import ProductSimilarity
 from sqlalchemy import select, and_, desc, func, or_
 
 logger = structlog.get_logger()
@@ -94,73 +94,10 @@ class AdvancedRecommendationEngine:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Get trending products based on recent interactions and sales
+        Get trending products (Disabled: products not in Postgres)
         """
-        try:
-            async with get_database_session() as session:
-                # Calculate trending score based on recent activity
-                cutoff_date = datetime.utcnow() - timedelta(days=time_window)
-                
-                query = select(
-                    Product.id,
-                    Product.name,
-                    Product.price,
-                    Product.avg_rating,
-                    Product.view_count,
-                    Product.sale_count,
-                    Product.category_ids,
-                    # Calculate trend score
-                    func.coalesce(Product.view_count, 0).label('views'),
-                    func.coalesce(Product.sale_count, 0).label('sales'),
-                    (func.coalesce(Product.view_count, 0) * 0.3 + 
-                     func.coalesce(Product.sale_count, 0) * 0.7).label('trend_score')
-                ).where(
-                    and_(
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4]),
-                        Product.updated_at >= cutoff_date
-                    )
-                ).order_by(desc('trend_score')).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    # Calculate dynamic trending score
-                    views_score = min(1.0, (product.views or 0) / 1000.0)
-                    sales_score = min(1.0, (product.sales or 0) / 100.0)
-                    recency_score = 1.0  # Recent products get full score
-                    
-                    trend_score = (views_score * 0.3 + sales_score * 0.5 + recency_score * 0.2)
-                    final_score = max(0.1, trend_score - (i * 0.02))  # Position penalty
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": final_score,
-                        "reason": f"Trending product (views: {product.views}, sales: {product.sales})",
-                        "metadata": {
-                            "algorithm": "trending_analysis",
-                            "context": context,
-                            "product_name": product.name,
-                            "product_price": product.price,
-                            "avg_rating": product.avg_rating,
-                            "view_count": product.views,
-                            "sale_count": product.sales,
-                            "trend_score": trend_score,
-                            "time_window_days": time_window,
-                            "ml_powered": True,
-                            "personalized": False,
-                            "algorithm_used": "trend_analytics",
-                            "confidence_score": final_score
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error getting trending recommendations", error=str(e))
-            return await self._popular_products_fallback(limit, context)
+        logger.warning("Trending recommendations skipped - products not in PostgreSQL")
+        return await self._popular_products_fallback(limit, context)
     
     async def _collaborative_filtering_recommendations(
         self,
@@ -169,56 +106,10 @@ class AdvancedRecommendationEngine:
         context: str
     ) -> List[Dict[str, Any]]:
         """
-        User-based collaborative filtering recommendations
+        User-based collaborative filtering recommendations (Disabled: products not in Postgres)
         """
-        try:
-            # This would typically use a more sophisticated algorithm
-            # For now, implement a simplified version
-            
-            async with get_database_session() as session:
-                # Find users with similar preferences (simplified)
-                # In production, this would use matrix factorization or deep learning
-                
-                # Get popular products as base for collaborative filtering
-                query = select(Product).where(
-                    and_(
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4]),
-                        Product.avg_rating >= 4.0
-                    )
-                ).order_by(
-                    desc(Product.avg_rating),
-                    desc(Product.view_count)
-                ).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    score = max(0.1, 0.9 - (i * 0.05))  # Decreasing score
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": score,
-                        "reason": "Recommended based on similar users' preferences",
-                        "metadata": {
-                            "algorithm": "collaborative_filtering",
-                            "product_name": product.name,
-                            "product_price": product.price,
-                            "avg_rating": product.avg_rating,
-                            "ml_powered": True,
-                            "personalized": True,
-                            "algorithm_used": "user_similarity",
-                            "confidence_score": score
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in collaborative filtering", error=str(e))
-            return []
+        logger.warning("Collaborative filtering skipped - products not in PostgreSQL")
+        return []
     
     async def _content_based_user_recommendations(
         self,
@@ -227,63 +118,10 @@ class AdvancedRecommendationEngine:
         context: str
     ) -> List[Dict[str, Any]]:
         """
-        Content-based recommendations based on user's interaction history
+        Content-based recommendations (Disabled: products not in Postgres)
         """
-        try:
-            # This would analyze user's past interactions and find similar products
-            # For now, implement a category-based approach
-            
-            async with get_database_session() as session:
-                # Get products from diverse categories
-                query = select(Product).where(
-                    and_(
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4])
-                    )
-                ).order_by(
-                    desc(Product.avg_rating),
-                    desc(Product.view_count)
-                ).limit(limit * 2)  # Get more to ensure diversity
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                # Ensure category diversity
-                recommendations = []
-                used_categories = set()
-                
-                for product in products:
-                    if len(recommendations) >= limit:
-                        break
-                        
-                    # Check category diversity
-                    product_categories = set(product.category_ids or [])
-                    if not product_categories.intersection(used_categories) or len(recommendations) < 3:
-                        used_categories.update(product_categories)
-                        
-                        score = max(0.1, 0.8 - (len(recommendations) * 0.04))
-                        
-                        recommendations.append({
-                            "product_id": str(product.id),
-                            "score": score,
-                            "reason": "Matches your interests and preferences",
-                            "metadata": {
-                                "algorithm": "content_based_user",
-                                "product_name": product.name,
-                                "product_price": product.price,
-                                "categories": product.category_ids,
-                                "ml_powered": True,
-                                "personalized": True,
-                                "algorithm_used": "content_analysis",
-                                "confidence_score": score
-                            }
-                        })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in content-based user recommendations", error=str(e))
-            return []
+        logger.warning("Content-based user recommendations skipped - products not in PostgreSQL")
+        return []
     
     async def _hybrid_personalized_recommendations(
         self,
@@ -343,24 +181,14 @@ class AdvancedRecommendationEngine:
         try:
             async with get_database_session() as session:
                 # Get pre-computed similarities
+                # Note: Product join removed as products are not in Postgres
                 query = select(
                     ProductSimilarity.similar_product_id,
-                    ProductSimilarity.similarity_score,
-                    Product.name,
-                    Product.price,
-                    Product.avg_rating,
-                    Product.category_ids
-                ).select_from(
-                    ProductSimilarity.__table__.join(
-                        Product.__table__,
-                        ProductSimilarity.similar_product_id == Product.id
-                    )
+                    ProductSimilarity.similarity_score
                 ).where(
                     and_(
                         ProductSimilarity.product_id == int(product_id),
-                        ProductSimilarity.similarity_score > 0.1,
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4])
+                        ProductSimilarity.similarity_score > 0.1
                     )
                 ).order_by(desc(ProductSimilarity.similarity_score)).limit(limit)
                 
@@ -375,15 +203,11 @@ class AdvancedRecommendationEngine:
                         "reason": f"Similar features and content (match: {sim.similarity_score:.1%})",
                         "metadata": {
                             "algorithm": "content_similarity",
-                            "product_name": sim.name,
-                            "product_price": sim.price,
-                            "avg_rating": sim.avg_rating,
-                            "similarity_score": sim.similarity_score,
-                            "categories": sim.category_ids,
+                            "similarity_score": float(sim.similarity_score),
                             "ml_powered": True,
                             "personalized": False,
                             "algorithm_used": "feature_similarity",
-                            "confidence_score": sim.similarity_score
+                            "confidence_score": float(sim.similarity_score)
                         }
                     })
                 
@@ -399,51 +223,10 @@ class AdvancedRecommendationEngine:
         context: str
     ) -> List[Dict[str, Any]]:
         """
-        Fallback to popular products when other algorithms fail
+        Fallback to popular products (Disabled: products not in Postgres)
         """
-        try:
-            async with get_database_session() as session:
-                query = select(Product).where(
-                    and_(
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4])
-                    )
-                ).order_by(
-                    desc(func.coalesce(Product.avg_rating, 0)),
-                    desc(func.coalesce(Product.view_count, 0)),
-                    desc(Product.updated_at)
-                ).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    score = max(0.1, 0.7 - (i * 0.03))
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": score,
-                        "reason": f"Popular product (rating: {product.avg_rating:.1f})",
-                        "metadata": {
-                            "algorithm": "popularity_fallback",
-                            "context": context,
-                            "product_name": product.name,
-                            "product_price": product.price,
-                            "avg_rating": product.avg_rating,
-                            "view_count": product.view_count,
-                            "ml_powered": False,
-                            "personalized": False,
-                            "algorithm_used": "popularity_ranking",
-                            "confidence_score": score
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in popular products fallback", error=str(e))
-            return []
+        logger.warning("Popular products fallback skipped - products not in PostgreSQL")
+        return []
     
     async def _category_similarity_fallback(
         self,
@@ -451,64 +234,10 @@ class AdvancedRecommendationEngine:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Fallback to category-based similarity
+        Fallback to category-based similarity (Disabled: products not in Postgres)
         """
-        try:
-            async with get_database_session() as session:
-                # Get reference product categories
-                ref_query = select(Product.category_ids).where(Product.id == int(product_id))
-                ref_result = await session.execute(ref_query)
-                ref_categories = ref_result.scalar()
-                
-                if not ref_categories:
-                    return []
-                
-                # Find products in same categories
-                query = select(Product).where(
-                    and_(
-                        Product.id != int(product_id),
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4]),
-                        or_(*[Product.category_ids.any(cat_id) for cat_id in ref_categories])
-                    )
-                ).order_by(
-                    desc(Product.avg_rating),
-                    desc(Product.view_count)
-                ).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    # Calculate category overlap score
-                    overlap = len(set(ref_categories) & set(product.category_ids or []))
-                    similarity_score = overlap / len(ref_categories) if ref_categories else 0
-                    score = max(0.1, similarity_score - (i * 0.02))
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": score,
-                        "reason": f"Same category as viewed product",
-                        "metadata": {
-                            "algorithm": "category_similarity",
-                            "product_name": product.name,
-                            "product_price": product.price,
-                            "avg_rating": product.avg_rating,
-                            "similarity_score": similarity_score,
-                            "categories": product.category_ids,
-                            "ml_powered": False,
-                            "personalized": False,
-                            "algorithm_used": "category_matching",
-                            "confidence_score": score
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in category similarity fallback", error=str(e))
-            return []
+        logger.warning("Category similarity fallback skipped - products not in PostgreSQL")
+        return []
     
     def _apply_filters(
         self,

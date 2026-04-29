@@ -1,20 +1,19 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: ai_discovery_postgres
     environment:
-      POSTGRES_DB: ai_discovery
-      POSTGRES_USER: ai_user
-      POSTGRES_PASSWORD: ai_password_2024
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
-      - "7010:5432"
+      - "${POSTGRES_PORT:-7010}:5432"  # Explicit port mapping for local access
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      # Note: Database schema is now managed by Alembic migrations
+      # Run 'alembic upgrade head' after starting the postgres container
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -29,165 +28,20 @@ services:
   redis:
     image: redis:7-alpine
     container_name: ai_discovery_redis
-    command: redis-server --appendonly yes --requirepass redis_password_2024
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     ports:
-      - "7011:6379"
+      - "${REDIS_PORT:-7011}:6379"  # Explicit port mapping for local access
     volumes:
       - redis_data:/data
     restart: unless-stopped
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redis_password_2024", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 30s
-
-  # Search Service
-  search-service:
-    build:
-      context: ./backend
-      dockerfile: search-service/Dockerfile
-    container_name: ai_discovery_search
-    ports:
-      - "${SEARCH_SERVICE_EXTERNAL_PORT:-7001}:${SEARCH_SERVICE_PORT:-7099}"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - SEARCH_SERVICE_HOST=0.0.0.0
-      - SEARCH_SERVICE_PORT=${SEARCH_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Recommendation Service
-  recommendation-service:
-    build:
-      context: ./backend
-      dockerfile: recommendation-service/Dockerfile
-    container_name: ai_discovery_recommendation
-    ports:
-      - "${RECOMMENDATION_SERVICE_EXTERNAL_PORT:-7002}:${RECOMMENDATION_SERVICE_PORT:-7099}"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - RECOMMENDATION_SERVICE_HOST=0.0.0.0
-      - RECOMMENDATION_SERVICE_PORT=${RECOMMENDATION_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Analytics Service
-  analytics-service:
-    build:
-      context: ./backend
-      dockerfile: analytics-service/Dockerfile
-    container_name: ai_discovery_analytics
-    ports:
-      - "${ANALYTICS_SERVICE_EXTERNAL_PORT:-7004}:${ANALYTICS_SERVICE_PORT:-7099}"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - ANALYTICS_SERVICE_HOST=0.0.0.0
-      - ANALYTICS_SERVICE_PORT=${ANALYTICS_SERVICE_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-      - WEAVIATE_URL=${WEAVIATE_URL}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Shopping Assistant Service
-  shopping-assistant:
-    build:
-      context: ./backend
-      dockerfile: shopping-assistant/Dockerfile
-    container_name: ai_discovery_assistant
-    ports:
-      - "${SHOPPING_ASSISTANT_EXTERNAL_PORT:-7005}:${SHOPPING_ASSISTANT_PORT:-7099}"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
-      - SHOPPING_ASSISTANT_HOST=0.0.0.0
-      - SHOPPING_ASSISTANT_PORT=${SHOPPING_ASSISTANT_PORT:-7099}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000"]}
-    restart: unless-stopped
-    networks:
-      - ai-discovery
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7099/health/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-
 
   # Elasticsearch (for search indexing)
   elasticsearch:
@@ -196,15 +50,28 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
       - bootstrap.memory_lock=true
     ulimits:
       memlock:
         soft: -1
         hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
     ports:
-      - "${ELASTICSEARCH_EXTERNAL_PORT:-9200}:9200"
+      - "${ELASTICSEARCH_PORT:-7020}:9200"  # Explicit port mapping for local access
       - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
     restart: unless-stopped
     networks:
       - ai-discovery
@@ -215,34 +82,125 @@ services:
       retries: 3
       start_period: 60s
 
-  # Weaviate (for vector search)
-  weaviate:
-    image: cr.weaviate.io/semitechnologies/weaviate:1.24.5
-    container_name: ai_discovery_weaviate
+  # Qdrant (for vector search)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai_discovery_qdrant
     ports:
-      - "${WEAVIATE_EXTERNAL_PORT:-8065}:8065"
-      - "50051:50051"
+      - "${QDRANT_PORT:-7021}:6333"  # Explicit port mapping for local access
+      - "${QDRANT_GRPC_PORT:-7022}:6334"  # Explicit port mapping for local access
+    volumes:
+      - qdrant_data:/qdrant/storage
     environment:
-      QUERY_DEFAULTS_LIMIT: 25
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
-      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'
-      ENABLE_MODULES: 'text2vec-openai,qna-openai'
-      CLUSTER_HOSTNAME: 'node1'
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
     restart: unless-stopped
     networks:
       - ai-discovery
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8065/v1/meta", "||", "exit", "1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
+
+  # Celery Worker (Development Infrastructure)
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_worker
+    ports:
+      - "5678:5678"  # Expose for development debugging
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-4} --queues=analytics,celery --max-tasks-per-child=1000
+    healthcheck:
+      test: ["CMD", "celery", "-A", "shared.celery.app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Beat (Development Infrastructure)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_celery_beat
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A shared.celery.app beat --loglevel=info --pidfile=/tmp/celerybeat.pid
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/celerybeat.pid"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Flower (Development Infrastructure)
+  flower:
+    build:
+      context: ./backend
+      dockerfile: shared/Dockerfile.celery
+      args:
+        BASE_IMAGE: discovery-base:latest
+    container_name: ai_discovery_flower
+    ports:
+      - "5555:5555"  # Expose Flower UI for development
+    env_file:
+      - .env
+    environment:
+      - DOCKER_CONTAINER=true
+    restart: unless-stopped
+    networks:
+      - ai-discovery
+    depends_on:
+      redis:
+        condition: service_healthy
+      celery-worker:
+        condition: service_healthy
+    command: celery -A shared.celery.app flower --port=5555 --basic_auth=${FLOWER_BASIC_AUTH:-admin:admin}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -u ${FLOWER_BASIC_AUTH:-admin:admin} http://localhost:5555/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  qdrant_data:
     driver: local
 
 networks:

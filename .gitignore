@@ -96,12 +96,8 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-.env.local
-.env.development
-.env.test
-.env.production
-.env.staging
+.env*
+env*
 .venv
 env/
 venv/
@@ -323,7 +319,6 @@ $RECYCLE.BIN/
 *.pth
 *.onnx
 *.pb
-models/
 checkpoints/
 data/
 datasets/
@@ -494,4 +489,7 @@ secrets/
 .yarn/
 .pnp.*
 
+*.md
+
+ngrok.*
 # End of .gitignore

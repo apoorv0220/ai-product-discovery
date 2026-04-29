@@ -80,55 +80,9 @@ class RecommendationEngine:
             return await self._basic_similar_products_fallback(product_id, limit)
     
     async def _basic_similar_products_fallback(self, product_id: str, limit: int) -> List[Dict[str, Any]]:
-        """Basic fallback for similar products"""
-        try:
-            from shared.database.base import SessionLocal
-            from sqlalchemy import text
-            
-            session = SessionLocal()
-            
-            try:
-                # Simple query to get products excluding the reference
-                query = text("""
-                    SELECT magento_product_id as id, name, price, view_count
-                    FROM products 
-                    WHERE magento_product_id != :product_id 
-                    AND status = 1 AND visibility IN (2, 3, 4)
-                    ORDER BY RANDOM()
-                    LIMIT :limit
-                """)
-                
-                result = session.execute(query, {"product_id": int(product_id), "limit": limit})
-                products = result.fetchall()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    score = max(0.1, 0.5 - (i * 0.03))
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": score,
-                        "similarity_score": score,
-                        "reason": "Similar product",
-                        "metadata": {
-                            "algorithm": "random_similarity",
-                            "product_name": product.name,
-                            "product_price": float(product.price) if product.price else 0.0,
-                            "ml_powered": False,
-                            "personalized": False,
-                            "algorithm_used": "random_fallback",
-                            "confidence_score": score
-                        }
-                    })
-                
-                return recommendations
-                
-            finally:
-                session.close()
-                
-        except Exception as e:
-            logger.error("Error in similar products fallback", error=str(e))
-            return []
+        """Basic fallback for similar products (Disabled: products not in Postgres)"""
+        logger.warning("Basic similar products fallback skipped - products not in PostgreSQL")
+        return []
     
     async def cleanup(self):
         """Clean up resources"""
@@ -218,51 +172,38 @@ class RecommendationEngine:
             return await self._fallback_recommendations(limit)
     
     async def train_ml_models(self) -> None:
-        """Train ML models with latest data from database"""
+        """
+        Train ML models with latest data
+        NOTE: Product data loading from Postgres is disabled.
+        """
         try:
             logger.info("Starting ML model training")
             
             # Load data from database
-            from shared.models.product import Product
-            from shared.models.recommendation import CollaborativeFiltering
+            from shared.models.personalization import UserProductViews
             from shared.database.base import get_database_session
             from sqlalchemy import select
             
             async with get_database_session() as session:
-                # Load products
-                product_query = select(Product).where(Product.status == 1)
-                product_result = await session.execute(product_query)
-                products = product_result.scalars().all()
-                
-                # Convert to ML format
+                # Load products - TODO: Load from ElasticSearch
                 products_data = []
-                for product in products:
-                    products_data.append({
-                        'id': product.id,
-                        'name': product.name,
-                        'description': product.description or '',
-                        'categories': product.category_ids or [],
-                        'brand': product.attributes.get('brand', '') if product.attributes else '',
-                        'price': product.price or 0,
-                        'attributes': product.attributes or {},
-                        'view_count': product.view_count or 0,
-                        'avg_rating': product.avg_rating or 0,
-                        'purchase_count': product.purchase_count or 0
-                    })
                 
-                # Load interactions
-                interaction_query = select(CollaborativeFiltering)
+                # Load user interactions from UserProductViews (collaborative filtering data)
+                # Note: CollaborativeFiltering model doesn't exist, using UserProductViews instead
+                interaction_query = select(UserProductViews)
                 interaction_result = await session.execute(interaction_query)
                 interactions = interaction_result.scalars().all()
                 
                 # Convert to ML format
                 interactions_data = []
                 for interaction in interactions:
+                    # Use view_duration as implicit rating (longer views = higher interest)
+                    implicit_rating = min(1.0, (interaction.view_duration or 0) / 60.0)  # Normalize to 0-1
                     interactions_data.append({
-                        'user_id': str(interaction.user_id),
+                        'user_id': str(interaction.user_id or interaction.session_id),
                         'product_id': str(interaction.product_id),
-                        'rating': interaction.implicit_rating,
-                        'timestamp': interaction.updated_at.isoformat() if interaction.updated_at else datetime.utcnow().isoformat()
+                        'rating': implicit_rating,
+                        'timestamp': interaction.created_at.isoformat() if interaction.created_at else datetime.utcnow().isoformat()
                     })
                 
                 # Train ML models
@@ -486,111 +427,14 @@ class RecommendationEngine:
         limit: int = 10,
         filters: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """Hybrid recommendations combining multiple algorithms using real data"""
-        try:
-            from shared.models.product import Product
-            from shared.database.base import get_database_session
-            from sqlalchemy import select, and_, desc, func
-            
-            session_generator = get_database_session()
-            session = await session_generator.__anext__()
-            
-            try:
-                # Build base query for available products using raw SQL
-                from sqlalchemy import text
-                
-                base_query = text("""
-                    SELECT magento_product_id as id, name, price, avg_rating, view_count, category_ids
-                    FROM products 
-                    WHERE status = 1 AND visibility IN (2, 3, 4)
-                    ORDER BY 
-                        COALESCE(avg_rating, 0) * 0.4 + COALESCE(view_count, 0) * 0.0001 DESC,
-                        updated_at DESC,
-                        view_count DESC
-                    LIMIT :limit
-                """)
-                
-                result = await session.execute(base_query, {"limit": limit})
-                products = result.fetchall()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    # Calculate hybrid score based on multiple factors
-                    rating_score = (product.avg_rating or 0) / 5.0 if product.avg_rating else 0.0
-                    popularity_score = min(1.0, (product.view_count or 0) / 1000.0)
-                    recency_score = 0.8  # All products get a good recency score for now
-                    
-                    hybrid_score = (rating_score * 0.4 + popularity_score * 0.3 + recency_score * 0.3)
-                    final_score = max(0.1, hybrid_score - (i * 0.05))  # Position penalty
-                    
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": final_score,
-                        "reason": f"Recommended based on popularity and quality",
-                        "metadata": {
-                            "algorithm": "hybrid_scoring",
-                            "context": context,
-                            "product_name": product.name,
-                            "product_price": float(product.price) if product.price else 0.0,
-                            "avg_rating": float(product.avg_rating) if product.avg_rating else 0.0,
-                            "view_count": product.view_count or 0,
-                            "rating_score": rating_score,
-                            "popularity_score": popularity_score,
-                            "ml_powered": True,
-                            "personalized": False,
-                            "algorithm_used": "hybrid_collaborative",
-                            "confidence_score": final_score
-                        }
-                    })
-                
-                return recommendations
-                
-            finally:
-                await session.close()
-                
-        except Exception as e:
-            logger.error("Error getting hybrid recommendations from database", error=str(e))
-            # Fallback to basic recommendations
-            return await self._basic_recommendations(limit, context)
+        """Hybrid recommendations combining multiple algorithms (Disabled: products not in Postgres)"""
+        logger.warning("Hybrid recommendations skipped - products not in PostgreSQL")
+        return await self._basic_recommendations(limit, context)
     
     async def _basic_recommendations(self, limit: int, context: str) -> List[Dict[str, Any]]:
-        """Basic fallback recommendations when advanced algorithms fail"""
-        try:
-            from shared.models.product import Product
-            from shared.database.base import get_database_session
-            from sqlalchemy import select, and_, desc
-            
-            async with get_database_session() as session:
-                # Simple fallback: get most popular products
-                query = select(Product).where(
-                    and_(
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4])
-                    )
-                ).order_by(desc(Product.view_count), desc(Product.avg_rating)).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": max(0.1, 0.9 - (i * 0.1)),
-                        "reason": "Popular product",
-                        "metadata": {
-                            "algorithm": "basic_popularity",
-                            "context": context,
-                            "product_name": product.name,
-                            "product_price": product.price
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in basic recommendations fallback", error=str(e))
-            return []
+        """Basic fallback recommendations (Disabled: products not in Postgres)"""
+        logger.warning("Basic recommendations fallback skipped - products not in PostgreSQL")
+        return await self._mock_recommendations(limit, "fallback")
     
     async def _trending_products(
         self,
@@ -617,10 +461,9 @@ class RecommendationEngine:
         """Similar products recommendations using real database data"""
         try:
             # Import models here to avoid import issues
-            from shared.models.product import Product
             from shared.models.recommendation import ProductSimilarity
             from shared.database.base import get_database_session
-            from sqlalchemy import select, desc, and_, or_
+            from sqlalchemy import select, desc, and_
             
             # Handle direct product_id parameter (for similar products API)
             if hasattr(self, '_current_similar_product_id'):
@@ -632,117 +475,41 @@ class RecommendationEngine:
             
             async with get_database_session() as session:
                 # First try to get pre-computed similarities
-                similarity_query = select(ProductSimilarity, Product).join(
-                    Product, ProductSimilarity.product_id_2 == Product.id
-                ).where(
+                # Note: Product join removed as products are not in Postgres
+                similarity_query = select(ProductSimilarity).where(
                     and_(
-                        ProductSimilarity.product_id_1 == reference_product_id,
-                        ProductSimilarity.combined_similarity > 0.1,
-                        Product.status == 1,  # Enabled products only
-                        Product.visibility.in_([2, 3, 4])  # Visible products
+                        ProductSimilarity.product_id == reference_product_id,
+                        ProductSimilarity.similarity_score > 0.1,
                     )
-                ).order_by(desc(ProductSimilarity.combined_similarity)).limit(limit)
+                ).order_by(desc(ProductSimilarity.similarity_score)).limit(limit)
                 
                 result = await session.execute(similarity_query)
-                similarities = result.fetchall()
+                similarities = result.scalars().all()
                 
                 recommendations = []
-                for similarity, product in similarities:
+                for similarity in similarities:
                     recommendations.append({
-                        "product_id": str(product.id),
-                        "score": float(similarity.combined_similarity),
+                        "product_id": str(similarity.similar_product_id),
+                        "score": float(similarity.similarity_score),
                         "reason": f"Similar to product {reference_product_id}",
                         "metadata": {
                             "algorithm": "content_similarity",
                             "reference_product": reference_product_id,
                             "similarity_type": "combined",
-                            "product_name": product.name,
-                            "product_price": product.price
+                            "similarity_score": float(similarity.similarity_score)
                         }
                     })
-                
-                # If we don't have enough pre-computed similarities, fall back to category-based
-                if len(recommendations) < limit:
-                    logger.info("Insufficient pre-computed similarities, using category fallback", 
-                              found=len(recommendations), needed=limit)
-                    
-                    # Get the reference product's categories
-                    ref_product_query = select(Product).where(Product.id == reference_product_id)
-                    ref_result = await session.execute(ref_product_query)
-                    ref_product = ref_result.scalar_one_or_none()
-                    
-                    if ref_product and ref_product.category_ids:
-                        # Find products in same categories
-                        category_query = select(Product).where(
-                            and_(
-                                Product.id != reference_product_id,
-                                Product.status == 1,
-                                Product.visibility.in_([2, 3, 4]),
-                                or_(*[Product.category_ids.any(cat_id) for cat_id in ref_product.category_ids])
-                            )
-                        ).order_by(desc(Product.avg_rating), desc(Product.view_count)).limit(limit - len(recommendations))
-                        
-                        category_result = await session.execute(category_query)
-                        category_products = category_result.scalars().all()
-                        
-                        for product in category_products:
-                            recommendations.append({
-                                "product_id": str(product.id),
-                                "score": 0.5,  # Lower score for category-based
-                                "reason": f"Same category as product {reference_product_id}",
-                                "metadata": {
-                                    "algorithm": "category_similarity",
-                                    "reference_product": reference_product_id,
-                                    "product_name": product.name,
-                                    "product_price": product.price
-                                }
-                            })
                 
                 return recommendations[:limit]
                 
         except Exception as e:
             logger.error("Error getting similar products from database", error=str(e))
-            # Fallback to basic similar products if database fails
-            return await self._basic_similar_products(reference_product_id, limit)
+            return []
     
     async def _basic_similar_products(self, product_id: int, limit: int) -> List[Dict[str, Any]]:
-        """Basic fallback for similar products when database query fails"""
-        try:
-            from shared.models.product import Product
-            from shared.database.base import get_database_session
-            from sqlalchemy import select, and_, desc
-            
-            async with get_database_session() as session:
-                # Simple fallback: get products from popular items
-                query = select(Product).where(
-                    and_(
-                        Product.id != product_id,
-                        Product.status == 1,
-                        Product.visibility.in_([2, 3, 4])
-                    )
-                ).order_by(desc(Product.view_count), desc(Product.avg_rating)).limit(limit)
-                
-                result = await session.execute(query)
-                products = result.scalars().all()
-                
-                recommendations = []
-                for i, product in enumerate(products):
-                    recommendations.append({
-                        "product_id": str(product.id),
-                        "score": max(0.1, 0.8 - (i * 0.1)),
-                        "reason": "Popular product",
-                        "metadata": {
-                            "algorithm": "popularity_fallback",
-                            "product_name": product.name,
-                            "product_price": product.price
-                        }
-                    })
-                
-                return recommendations
-                
-        except Exception as e:
-            logger.error("Error in basic similar products fallback", error=str(e))
-            return []
+        """Basic fallback for similar products (Disabled: products not in Postgres)"""
+        logger.warning("Basic similar products fallback skipped - products not in PostgreSQL")
+        return []
     
     async def _apply_filters(
         self,

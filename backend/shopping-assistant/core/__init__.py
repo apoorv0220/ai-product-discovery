@@ -1,0 +1,3 @@
+"""
+Shopping Assistant Core Modules
+"""

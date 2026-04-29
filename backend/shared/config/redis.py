@@ -13,10 +13,15 @@ import redis
 from typing import Optional, Any, Dict, List
 import json
 import pickle
-from datetime import timedelta
+from datetime import datetime, timedelta, date
 from shared.config.settings import get_settings
 
-settings = get_settings()
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 
 def get_redis_client():
@@ -61,6 +66,7 @@ class RedisConfig:
     @classmethod
     def get_sync_connection(cls) -> redis.Redis:
         """Get synchronous Redis connection"""
+        settings = get_settings()
         return redis.from_url(
             settings.REDIS_URL,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
@@ -70,6 +76,7 @@ class RedisConfig:
     @classmethod
     async def get_async_connection(cls) -> redis_async.Redis:
         """Get asynchronous Redis connection"""
+        settings = get_settings()
         return await redis_async.from_url(
             settings.REDIS_URL,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
@@ -92,14 +99,19 @@ class CacheManager:
     
     async def get_async_redis(self) -> redis_async.Redis:
         """Get or create async Redis connection"""
-        if self.redis_async is None:
+        import asyncio
+        current_loop = asyncio.get_running_loop()
+        
+        if self.redis_async is None or getattr(self, '_loop', None) != current_loop:
             self.redis_async = await RedisConfig.get_async_connection()
+            self._loop = current_loop
+            
         return self.redis_async
     
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
         """Set value in cache (sync)"""
         try:
-            serialized_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            serialized_value = json.dumps(value, default=json_serial) if isinstance(value, (dict, list)) else str(value)
             return self.redis_sync.setex(key, ttl or 3600, serialized_value)
         except Exception:
             return False
@@ -108,7 +120,7 @@ class CacheManager:
         """Set value in cache (async)"""
         try:
             redis = await self.get_async_redis()
-            serialized_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            serialized_value = json.dumps(value, default=json_serial) if isinstance(value, (dict, list)) else str(value)
             await redis.setex(key, ttl or 3600, serialized_value)
             return True
         except Exception:
@@ -271,18 +283,123 @@ class ABTestCache:
 
 
 class AnalyticsBuffer:
-    """Redis-based analytics event buffering"""
+    """Redis-based analytics event buffering with deduplication and rate limiting"""
     
     def __init__(self):
         self.redis_sync = RedisConfig.get_sync_connection()
+        # Default rate limits (events per minute)
+        self.default_rate_limit = 1000  # 1000 events per minute per merchant
+        self.default_user_rate_limit = 100  # 100 events per minute per user
+        # Deduplication TTL (events older than this won't be checked for duplicates)
+        self.dedup_ttl = 3600  # 1 hour
     
-    def buffer_event(self, event_data: Dict[str, Any]) -> bool:
-        """Add event to buffer for batch processing"""
+    def buffer_event(
+        self,
+        event_data: Dict[str, Any],
+        check_duplicate: bool = True,
+        check_rate_limit: bool = True
+    ) -> bool:
+        """
+        Add event to buffer for batch processing
+        
+        Args:
+            event_data: Event data dictionary (must contain event_id, merchant_id, session_id)
+            check_duplicate: Whether to check for duplicates
+            check_rate_limit: Whether to check rate limits
+            
+        Returns:
+            True if event was buffered, False otherwise
+        """
         try:
+            event_id = event_data.get('event_id')
+            merchant_id = event_data.get('merchant_id')
+            session_id = event_data.get('session_id')
+            user_id = event_data.get('user_id')
+            
+            if not event_id or not merchant_id or not session_id:
+                return False
+            
+            # Check for duplicates if enabled
+            if check_duplicate:
+                if self._is_duplicate(event_id, merchant_id, session_id):
+                    return False  # Duplicate event, don't buffer
+            
+            # Check rate limits if enabled
+            if check_rate_limit:
+                if not self._check_rate_limit(merchant_id, user_id):
+                    return False  # Rate limit exceeded
+            
+            # Add to queue
             queue_key = RedisConfig.build_key('analytics', 'events_queue')
-            return bool(self.redis_sync.lpush(queue_key, json.dumps(event_data)))
-        except Exception:
+            success = bool(self.redis_sync.lpush(queue_key, json.dumps(event_data, default=json_serial)))
+            
+            # Mark as seen for deduplication
+            if success and check_duplicate:
+                self._mark_event_seen(event_id, merchant_id, session_id)
+            
+            return success
+            
+        except Exception as e:
+            # Log error but don't raise (fail silently for resilience)
             return False
+    
+    def _is_duplicate(self, event_id: str, merchant_id: int, session_id: str) -> bool:
+        """Check if event is a duplicate using Redis set"""
+        try:
+            dedup_key = RedisConfig.build_key('analytics', 'dedup', merchant_id, session_id)
+            return bool(self.redis_sync.sismember(dedup_key, event_id))
+        except Exception:
+            return False  # On error, assume not duplicate (fail open)
+    
+    def _mark_event_seen(self, event_id: str, merchant_id: int, session_id: str) -> None:
+        """Mark event as seen for deduplication"""
+        try:
+            dedup_key = RedisConfig.build_key('analytics', 'dedup', merchant_id, session_id)
+            # Add event_id to set with TTL
+            pipe = self.redis_sync.pipeline()
+            pipe.sadd(dedup_key, event_id)
+            pipe.expire(dedup_key, self.dedup_ttl)
+            pipe.execute()
+        except Exception:
+            pass  # Fail silently
+    
+    def _check_rate_limit(self, merchant_id: int, user_id: Optional[int] = None) -> bool:
+        """
+        Check rate limit for merchant and optionally user
+        
+        Uses sliding window rate limiting with Redis
+        
+        Returns:
+            True if within rate limit, False if exceeded
+        """
+        try:
+            # Check merchant rate limit
+            merchant_key = RedisConfig.build_key('analytics', 'rate_limit', 'merchant', merchant_id)
+            merchant_count = self.redis_sync.incr(merchant_key)
+            
+            if merchant_count == 1:
+                # First request, set expiration
+                self.redis_sync.expire(merchant_key, 60)  # 1 minute window
+            
+            if merchant_count > self.default_rate_limit:
+                return False  # Merchant rate limit exceeded
+            
+            # Check user rate limit if user_id provided
+            if user_id:
+                user_key = RedisConfig.build_key('analytics', 'rate_limit', 'user', user_id)
+                user_count = self.redis_sync.incr(user_key)
+                
+                if user_count == 1:
+                    # First request, set expiration
+                    self.redis_sync.expire(user_key, 60)  # 1 minute window
+                
+                if user_count > self.default_user_rate_limit:
+                    return False  # User rate limit exceeded
+            
+            return True
+            
+        except Exception:
+            return True  # On error, allow event (fail open)
     
     def get_buffered_events(self, batch_size: int = 100) -> List[Dict[str, Any]]:
         """Get batch of events from buffer"""
@@ -308,6 +425,14 @@ class AnalyticsBuffer:
             return self.redis_sync.llen(queue_key)
         except Exception:
             return 0
+    
+    def clear_deduplication_cache(self, merchant_id: int, session_id: str) -> None:
+        """Clear deduplication cache for a session (useful for testing)"""
+        try:
+            dedup_key = RedisConfig.build_key('analytics', 'dedup', merchant_id, session_id)
+            self.redis_sync.delete(dedup_key)
+        except Exception:
+            pass
 
 
 # Global instances
